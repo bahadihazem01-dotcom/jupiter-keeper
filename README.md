@@ -11,6 +11,7 @@ Based on [jup-ag/limit-order-taker-example](https://github.com/jup-ag/limit-orde
 - **Graceful shutdown** — handles SIGINT/SIGTERM cleanly
 - **Execution stats** — tracks orders checked, executed, failed, skipped
 - **Retry logic** — automatic retries on API rate limits and transient failures
+- **Web dashboard** — live browser UI showing balance, stats, and recent orders at `http://localhost:3000`
 
 ## How It Works
 
@@ -62,6 +63,12 @@ POLL_INTERVAL_MS=5000
 ```bash
 pnpm start
 ```
+
+This will:
+1. Start the keeper bot (runs in the terminal)
+2. Open a **web dashboard** in your browser at `http://localhost:3000`
+
+The dashboard shows live stats, wallet balance, recent orders, and configuration — all updating in real-time.
 
 ### Running with tmux (recommended for servers)
 
@@ -138,6 +145,7 @@ All settings are configured via environment variables in `.env`:
 | `MAX_ORDERS_PER_CYCLE` | `10` | Max orders to process per cycle per pair |
 | `JUPITER_API_BASE_URL` | `https://quote-api.jup.ag/v6` | Jupiter API base URL |
 | `SLIPPAGE_BPS` | `0` | Slippage tolerance for quotes |
+| `DASHBOARD_PORT` | `3000` | Port for the web dashboard |
 
 ## Project Structure
 
@@ -149,6 +157,7 @@ src/
   jupiterApi.ts  # Jupiter Quote/Swap API with retry logic
   fee.ts         # Taker fee calculation
   logger.ts      # Structured logging
+  dashboard.ts   # Web dashboard (HTML + SSE live updates)
 ```
 
 ## Security Notes

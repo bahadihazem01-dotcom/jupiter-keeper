@@ -14,7 +14,13 @@ import { bs58 } from "@coral-xyz/anchor/dist/cjs/utils/bytes";
 import { getTakerFee } from "./fee";
 import { CONFIG } from "./config";
 import { logger } from "./logger";
-import { validateBalance } from "./balance";
+import { validateBalance, checkBalance } from "./balance";
+import {
+  startDashboardServer,
+  updateDashboard,
+  addRecentOrder,
+} from "./dashboard";
+import { exec } from "child_process";
 
 interface ExecutionStats {
   cycleCount: number;
@@ -77,6 +83,20 @@ export async function main() {
     minSolBalance: CONFIG.minSolBalance,
   });
 
+  // Start dashboard
+  startDashboardServer(CONFIG.dashboardPort);
+  updateDashboard({ wallet: wallet.publicKey.toBase58() });
+
+  // Open browser
+  const dashboardUrl = `http://localhost:${CONFIG.dashboardPort}`;
+  const openCmd =
+    process.platform === "darwin"
+      ? `open ${dashboardUrl}`
+      : process.platform === "win32"
+        ? `start ${dashboardUrl}`
+        : `xdg-open ${dashboardUrl} 2>/dev/null || echo "Open ${dashboardUrl} in your browser"`;
+  exec(openCmd);
+
   // Initial balance check
   const hasBalance = await validateBalance(connection, wallet.publicKey);
   if (!hasBalance) {
@@ -85,6 +105,10 @@ export async function main() {
     );
     process.exit(1);
   }
+
+  // Update dashboard with initial balance
+  const initBal = await checkBalance(connection, wallet.publicKey);
+  updateDashboard({ solBalance: initBal.solBalance });
 
   const fee = await limitOrder.getFee();
   logger.info("Fee config loaded", {
@@ -98,8 +122,9 @@ export async function main() {
     try {
       // Periodic balance check (every 10 cycles)
       if (stats.cycleCount % 10 === 0) {
-        const ok = await validateBalance(connection, wallet.publicKey);
-        if (!ok) {
+        const bal = await checkBalance(connection, wallet.publicKey);
+        updateDashboard({ solBalance: bal.solBalance });
+        if (!bal.hasSufficientSol) {
           logger.warn(
             "Low SOL balance, pausing until balance is restored..."
           );
@@ -107,6 +132,17 @@ export async function main() {
           continue;
         }
       }
+
+      // Update dashboard stats every cycle
+      updateDashboard({
+        stats: {
+          cycleCount: stats.cycleCount,
+          ordersChecked: stats.ordersChecked,
+          ordersExecuted: stats.ordersExecuted,
+          ordersFailed: stats.ordersFailed,
+          ordersSkipped: stats.ordersSkipped,
+        },
+      });
 
       // Fetch open orders
       const pendingOrders = await limitOrder.getOrders();
@@ -178,6 +214,16 @@ export async function main() {
           if (!makerOutputAccountInfo) {
             logger.debug(`Skipping order ${orderKey}: maker output account closed`);
             stats.ordersSkipped++;
+            addRecentOrder({
+              timestamp: new Date().toISOString(),
+              orderKey,
+              inputMint: inputMint.toBase58(),
+              outputMint: outputMint.toBase58(),
+              profitBps: 0,
+              txid: null,
+              status: "skipped",
+              reason: "Maker account closed",
+            });
             continue;
           }
         }
@@ -191,6 +237,16 @@ export async function main() {
         if (!route) {
           logger.debug(`Skipping order ${orderKey}: no route found`);
           stats.ordersSkipped++;
+          addRecentOrder({
+            timestamp: new Date().toISOString(),
+            orderKey,
+            inputMint: inputMint.toBase58(),
+            outputMint: outputMint.toBase58(),
+            profitBps: 0,
+            txid: null,
+            status: "skipped",
+            reason: "No route",
+          });
           continue;
         }
 
@@ -310,11 +366,36 @@ export async function main() {
           stats.totalProfit = stats.totalProfit.add(
             new Decimal(profitLamports.toString())
           );
+
+          addRecentOrder({
+            timestamp: new Date().toISOString(),
+            orderKey,
+            inputMint: inputMint.toBase58(),
+            outputMint: outputMint.toBase58(),
+            profitBps,
+            txid,
+            status: "executed",
+          });
+
+          // Update balance after execution
+          const postBal = await checkBalance(connection, wallet.publicKey);
+          updateDashboard({ solBalance: postBal.solBalance });
         } catch (err) {
           logger.error(`Failed to execute order ${orderKey}`, {
             error: String(err),
           });
           stats.ordersFailed++;
+
+          addRecentOrder({
+            timestamp: new Date().toISOString(),
+            orderKey,
+            inputMint: inputMint.toBase58(),
+            outputMint: outputMint.toBase58(),
+            profitBps,
+            txid: null,
+            status: "failed",
+            reason: String(err).slice(0, 80),
+          });
         }
 
         await new Promise((r) => setTimeout(r, CONFIG.orderDelayMs));

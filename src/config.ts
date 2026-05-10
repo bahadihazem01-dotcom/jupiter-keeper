@@ -32,4 +32,7 @@ export const CONFIG = {
 
   // Whether to skip orders where maker output account is closed
   skipClosedMakerAccounts: true,
+
+  // Dashboard port
+  dashboardPort: parseInt(process.env.DASHBOARD_PORT || "3000"),
 };
