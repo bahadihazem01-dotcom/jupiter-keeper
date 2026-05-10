@@ -21,6 +21,7 @@ import {
   addRecentOrder,
 } from "./dashboard";
 import { exec } from "child_process";
+import { getOrCreateWallet } from "./wallet";
 
 interface ExecutionStats {
   cycleCount: number;
@@ -64,15 +65,11 @@ function logStats() {
 export async function main() {
   setupGracefulShutdown();
 
-  if (!CONFIG.privateKey) {
-    logger.error("PRIVATE_KEY not set in .env");
-    process.exit(1);
-  }
-
-  const wallet = new Wallet(
-    Keypair.fromSecretKey(bs58.decode(CONFIG.privateKey))
-  );
   const connection = new Connection(CONFIG.rpcEndpoint);
+
+  // Get existing wallet or generate a new one
+  const wallet = await getOrCreateWallet(connection);
+
   const limitOrder = new LimitOrderProvider(connection);
 
   logger.info("Keeper bot started", {
