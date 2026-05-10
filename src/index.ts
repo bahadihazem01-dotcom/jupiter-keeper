@@ -116,14 +116,20 @@ export async function main() {
   while (running) {
     stats.cycleCount++;
 
+    const cycleStart = Date.now();
+
     try {
+      logger.info(`── Cycle ${stats.cycleCount} starting ──`);
+
       // Periodic balance check (every 10 cycles)
       if (stats.cycleCount % 10 === 0) {
+        logger.info("Balance check (every 10 cycles)");
         const bal = await checkBalance(connection, wallet.publicKey);
         updateDashboard({ solBalance: bal.solBalance });
+        logger.info("Balance", { sol: bal.solBalance, sufficient: bal.hasSufficientSol });
         if (!bal.hasSufficientSol) {
           logger.warn(
-            "Low SOL balance, pausing until balance is restored..."
+            "Low SOL balance, pausing 30s until balance is restored..."
           );
           await new Promise((r) => setTimeout(r, 30_000));
           continue;
@@ -142,8 +148,10 @@ export async function main() {
       });
 
       // Fetch open orders
+      const fetchStart = Date.now();
       const pendingOrders = await limitOrder.getOrders();
-      logger.info(`Fetched ${pendingOrders.length} open orders`);
+      const fetchMs = Date.now() - fetchStart;
+      logger.info(`Fetched ${pendingOrders.length} open orders`, { fetchTimeMs: fetchMs });
 
       if (pendingOrders.length === 0) {
         await new Promise((r) => setTimeout(r, CONFIG.pollIntervalMs));
@@ -160,6 +168,11 @@ export async function main() {
       const liquidOrders = pendingOrders.filter(
         (order) => LIQUID_MINTS.has(order.account.outputMint.toBase58())
       );
+      logger.info(`Filtered to ${liquidOrders.length} liquid orders`, {
+        total: pendingOrders.length,
+        filtered: pendingOrders.length - liquidOrders.length,
+        liquid: liquidOrders.length,
+      });
 
       // Group orders by pair
       const pendingOrderGroup = liquidOrders.reduce(
@@ -225,7 +238,13 @@ export async function main() {
         ...otherOrders,
       ].slice(0, CONFIG.maxOrdersPerCycle);
       const pairsCount = Object.keys(pendingOrderGroup).length;
-      logger.info(`Checking ${filterOrders.length} orders from ${pairsCount} pairs (${liquidOrders.length} liquid orders)`);
+      logger.info(`Order selection`, {
+        totalPairs: pairsCount,
+        priorityPairs: priorityOrders.length,
+        otherPairs: otherOrders.length,
+        checking: filterOrders.length,
+        cachedSkips: failedPairCache.size,
+      });
 
       // Update dashboard with order stats
       updateDashboard({
@@ -261,10 +280,12 @@ export async function main() {
 
         // Skip if maker output account is closed
         if (CONFIG.skipClosedMakerAccounts) {
+          const acctCheckStart = Date.now();
           const makerOutputAccountInfo =
             await connection.getAccountInfo(makerOutputAccount);
+          const acctCheckMs = Date.now() - acctCheckStart;
           if (!makerOutputAccountInfo) {
-            logger.debug(`Skipping order ${orderKey}: maker output account closed`);
+            logger.debug(`Skipping order ${orderKey}: maker output account closed`, { rpcTimeMs: acctCheckMs });
             stats.ordersSkipped++;
             addRecentOrder({
               timestamp: new Date().toISOString(),
@@ -281,13 +302,15 @@ export async function main() {
         }
 
         // Get Jupiter quote
+        const quoteStart = Date.now();
         const route = await getQuote(
           inputMint,
           outputMint,
           makingAmount.toString()
         );
+        const quoteMs = Date.now() - quoteStart;
         if (!route) {
-          logger.debug(`Skipping order ${orderKey}: no route found`);
+          logger.debug(`Skipping order ${orderKey}: no route found`, { quoteTimeMs: quoteMs });
           stats.ordersSkipped++;
           addRecentOrder({
             timestamp: new Date().toISOString(),
@@ -303,6 +326,12 @@ export async function main() {
         }
 
         const quoteOutAmount = new BN(route.outAmount);
+        logger.info(`Quote received for ${orderKey}`, {
+          quoteTimeMs: quoteMs,
+          inAmount: makingAmount.toString(),
+          outAmount: route.outAmount,
+          priceImpact: route.priceImpactPct,
+        });
 
         // Calculate taking amount with taker fee
         const takerFee = getTakerFee(inputMint, outputMint, fee);
@@ -317,9 +346,14 @@ export async function main() {
           : 0;
 
         if (quoteOutAmount.lt(takingAmountWithTakerFee)) {
-          logger.debug(`Order ${orderKey} not profitable`, {
+          const gap = new Decimal(takingAmountWithTakerFee.toString())
+            .div(quoteOutAmount.toString())
+            .toFixed(2);
+          logger.info(`Order ${orderKey} NOT profitable`, {
             quoteOut: quoteOutAmount.toString(),
             required: takingAmountWithTakerFee.toString(),
+            gapMultiple: gap + "x",
+            takerFeeBps: takerFee,
           });
           stats.ordersSkipped++;
           continue;
@@ -452,6 +486,16 @@ export async function main() {
 
         await new Promise((r) => setTimeout(r, CONFIG.orderDelayMs));
       }
+
+      // Cycle summary
+      const cycleMs = Date.now() - cycleStart;
+      logger.info(`── Cycle ${stats.cycleCount} complete ──`, {
+        durationMs: cycleMs,
+        checked: filterOrders.length,
+        executed: stats.ordersExecuted,
+        skipped: stats.ordersSkipped,
+        cachedPairs: failedPairCache.size,
+      });
 
       // Log stats every 10 cycles
       if (stats.cycleCount % 10 === 0) {

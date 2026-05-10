@@ -71,14 +71,21 @@ export const getQuote = async (
     // Check failed pair cache
     const cachedFailTime = failedPairCache.get(pairKey);
     if (cachedFailTime && Date.now() - cachedFailTime < FAILED_PAIR_TTL_MS) {
-      return null; // skip known-bad pairs silently
+      const remainingSec = Math.round((FAILED_PAIR_TTL_MS - (Date.now() - cachedFailTime)) / 1000);
+      logger.debug("Cache hit: skipping known-bad pair", {
+        pair: `${fromMint.toBase58().slice(0,8)}->${toMint.toBase58().slice(0,8)}`,
+        expiresInSec: remainingSec,
+      });
+      return null;
     }
 
     // Rate limit ourselves
     const now = Date.now();
     const elapsed = now - lastQuoteTime;
     if (elapsed < QUOTE_COOLDOWN_MS) {
-      await new Promise((r) => setTimeout(r, QUOTE_COOLDOWN_MS - elapsed));
+      const waitMs = QUOTE_COOLDOWN_MS - elapsed;
+      logger.debug("Throttle: waiting before next quote", { waitMs });
+      await new Promise((r) => setTimeout(r, waitMs));
     }
     lastQuoteTime = Date.now();
 
@@ -99,6 +106,11 @@ export const getQuote = async (
       // Cache 400 errors (no route) so we don't retry for a while
       if (response.status === 400) {
         failedPairCache.set(pairKey, Date.now());
+        logger.debug("Cached dead pair (400 no-route)", {
+          pair: `${fromMint.toBase58().slice(0,8)}->${toMint.toBase58().slice(0,8)}`,
+          cacheSize: failedPairCache.size,
+          ttlMin: FAILED_PAIR_TTL_MS / 60000,
+        });
       }
       return null;
     }
