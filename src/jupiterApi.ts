@@ -104,8 +104,8 @@ export const getQuote = async (
     }
     return await response.json();
   } catch (err) {
+    // Don't cache rate-limit exhaustions — pair might work on next cycle
     logger.debug("Failed to get quote", { error: String(err) });
-    failedPairCache.set(pairKey, Date.now());
     return null;
   }
 };

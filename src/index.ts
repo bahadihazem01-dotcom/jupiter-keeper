@@ -176,8 +176,25 @@ export async function main() {
         {}
       );
 
+      // Known liquid input tokens — these pairs are most likely to have routes & profit
+      const PRIORITY_INPUT_MINTS = new Set([
+        "So11111111111111111111111111111111111111112",  // SOL
+        "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // USDC
+        "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",  // USDT
+        "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",   // JUP
+        "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So",   // mSOL
+        "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs",  // ETH (Wormhole)
+        "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",  // BONK
+        "rndrizKT3MK1iimdxRdWabcF7Zg7AR5T4nud4EkHBof",   // RENDER
+        "HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3",  // PYTH
+        "hntyVP6YFm1Hg25TN9WGLqM12b8TQmcknKrdu1oxWux",   // HNT
+        "85VBFQZC9TZkfaptBWjvUw7YbZjy52A6mjtPGjstQAmQ",  // W
+      ]);
+
       // Pick the best (lowest price ratio) order per pair
-      const bestPerPair: { publicKey: PublicKey; account: Order }[] = [];
+      const priorityOrders: { publicKey: PublicKey; account: Order }[] = [];
+      const otherOrders: { publicKey: PublicKey; account: Order }[] = [];
+
       Object.values(pendingOrderGroup).forEach((orders) => {
         const sorted = orders.sort((a, b) => {
           const aPrice = new Decimal(a.account.takingAmount.toString()).div(
@@ -188,17 +205,25 @@ export async function main() {
           );
           return aPrice.cmp(bPrice);
         });
-        bestPerPair.push(sorted[0]);
+        const best = sorted[0];
+        if (PRIORITY_INPUT_MINTS.has(best.account.inputMint.toBase58())) {
+          priorityOrders.push(best);
+        } else {
+          otherOrders.push(best);
+        }
       });
 
-      // Shuffle to cover different pairs each cycle (not always the same first N)
-      for (let i = bestPerPair.length - 1; i > 0; i--) {
+      // Shuffle the "other" orders to cover different obscure pairs each cycle
+      for (let i = otherOrders.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
-        [bestPerPair[i], bestPerPair[j]] = [bestPerPair[j], bestPerPair[i]];
+        [otherOrders[i], otherOrders[j]] = [otherOrders[j], otherOrders[i]];
       }
 
-      // Take up to maxOrdersPerCycle
-      const filterOrders = bestPerPair.slice(0, CONFIG.maxOrdersPerCycle);
+      // Priority orders first, then random others, capped at maxOrdersPerCycle
+      const filterOrders = [
+        ...priorityOrders,
+        ...otherOrders,
+      ].slice(0, CONFIG.maxOrdersPerCycle);
       const pairsCount = Object.keys(pendingOrderGroup).length;
       logger.info(`Checking ${filterOrders.length} orders from ${pairsCount} pairs (${liquidOrders.length} liquid orders)`);
 
