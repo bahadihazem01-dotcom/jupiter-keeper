@@ -8,6 +8,7 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
+import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { getQuote, getSwapIx, failedPairCache } from "./jupiterApi";
 import { Wallet, BN } from "@coral-xyz/anchor";
 import { bs58 } from "@coral-xyz/anchor/dist/cjs/utils/bytes";
@@ -22,6 +23,11 @@ import {
 } from "./dashboard";
 import { exec } from "child_process";
 import { getOrCreateWallet } from "./wallet";
+
+// Cost of creating an ATA in lamports (~0.00203 SOL)
+const ATA_RENT_LAMPORTS = 2039280;
+// Cache of existing ATAs to avoid redundant RPC calls
+const existingAtaCache = new Set<string>();
 
 interface ExecutionStats {
   cycleCount: number;
@@ -373,10 +379,61 @@ export async function main() {
           continue;
         }
 
+        // Check if we need to create new token accounts (costs ~0.002 SOL each)
+        const mintsToCheck = [inputMint, outputMint];
+        let ataCreationCost = 0;
+        const atasNeeded: string[] = [];
+
+        for (const mint of mintsToCheck) {
+          const mintStr = mint.toBase58();
+          // SOL doesn't need an ATA
+          if (mintStr === "So11111111111111111111111111111111111111112") continue;
+          // Already known to exist
+          if (existingAtaCache.has(mintStr)) continue;
+
+          const ata = getAssociatedTokenAddressSync(mint, wallet.publicKey);
+          const ataInfo = await connection.getAccountInfo(ata);
+          if (ataInfo) {
+            existingAtaCache.add(mintStr);
+          } else {
+            ataCreationCost += ATA_RENT_LAMPORTS;
+            atasNeeded.push(mintStr.slice(0, 8));
+          }
+        }
+
+        if (ataCreationCost > 0) {
+          const bal = await checkBalance(connection, wallet.publicKey);
+          const availableLamports = Math.floor((bal.solBalance - CONFIG.minSolBalance) * 1e9);
+          if (availableLamports < ataCreationCost + 10000) {
+            logger.warn(`Skipping order ${orderKey}: need ${(ataCreationCost / 1e9).toFixed(4)} SOL for new token accounts but only ${((availableLamports) / 1e9).toFixed(4)} SOL available`, {
+              atasNeeded,
+              costSol: ataCreationCost / 1e9,
+              availableSol: availableLamports / 1e9,
+            });
+            stats.ordersSkipped++;
+            addRecentOrder({
+              timestamp: new Date().toISOString(),
+              orderKey,
+              inputMint: inputMint.toBase58(),
+              outputMint: outputMint.toBase58(),
+              profitBps,
+              txid: null,
+              status: "skipped",
+              reason: "Can't afford ATA creation",
+            });
+            continue;
+          }
+          logger.info(`Will create ${atasNeeded.length} new token account(s)`, {
+            atasNeeded,
+            costSol: ataCreationCost / 1e9,
+          });
+        }
+
         logger.info(`Executing order ${orderKey}`, {
           profitBps,
           quoteOut: quoteOutAmount.toString(),
           required: takingAmountWithTakerFee.toString(),
+          newAtas: atasNeeded.length > 0 ? atasNeeded : undefined,
         });
 
         try {
