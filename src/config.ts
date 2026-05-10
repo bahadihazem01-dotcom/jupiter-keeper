@@ -25,7 +25,7 @@ export const CONFIG = {
 
   // Jupiter API base URL
   jupiterApiBaseUrl:
-    process.env.JUPITER_API_BASE_URL || "https://quote-api.jup.ag/v6",
+    process.env.JUPITER_API_BASE_URL || "https://api.jup.ag/swap/v1",
 
   // Slippage in basis points for Jupiter quotes
   slippageBps: parseInt(process.env.SLIPPAGE_BPS || "0"),
