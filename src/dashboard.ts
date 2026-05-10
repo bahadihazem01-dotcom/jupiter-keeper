@@ -16,6 +16,10 @@ export interface DashboardData {
   recentOrders: RecentOrder[];
   startedAt: string;
   uptimeSeconds: number;
+  totalOrders: number;
+  liquidOrders: number;
+  pairsCount: number;
+  cachedPairs: number;
   config: {
     rpc: string;
     pollIntervalMs: number;
@@ -50,6 +54,10 @@ let dashboardData: DashboardData = {
   recentOrders: [],
   startedAt: new Date().toISOString(),
   uptimeSeconds: 0,
+  totalOrders: 0,
+  liquidOrders: 0,
+  pairsCount: 0,
+  cachedPairs: 0,
   config: {
     rpc: CONFIG.rpcEndpoint.replace(/\/\/.*@/, "//***@"),
     pollIntervalMs: CONFIG.pollIntervalMs,
@@ -298,6 +306,29 @@ function getHTML(): string {
       </div>
     </div>
 
+    <div class="cards" style="grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));">
+      <div class="card">
+        <div class="label">Total Orders</div>
+        <div class="value" style="font-size:22px;color:#8b949e;" id="totalOrders">--</div>
+        <div class="sub">On-chain limit orders</div>
+      </div>
+      <div class="card">
+        <div class="label">Liquid Orders</div>
+        <div class="value" style="font-size:22px;color:#58a6ff;" id="liquidOrders">--</div>
+        <div class="sub">SOL/USDC/USDT output</div>
+      </div>
+      <div class="card">
+        <div class="label">Token Pairs</div>
+        <div class="value" style="font-size:22px;color:#bc8cff;" id="pairsCount">--</div>
+        <div class="sub">Unique pairs monitored</div>
+      </div>
+      <div class="card">
+        <div class="label">Cached (No Route)</div>
+        <div class="value" style="font-size:22px;color:#d29922;" id="cachedPairs">--</div>
+        <div class="sub">Skipped for 5 min</div>
+      </div>
+    </div>
+
     <div class="section">
       <div class="section-header">Wallet</div>
       <div class="wallet-info">
@@ -348,6 +379,11 @@ function getHTML(): string {
       document.getElementById('checked').textContent = data.stats.ordersChecked;
       document.getElementById('uptime').textContent = formatUptime(data.uptimeSeconds);
       document.getElementById('startedAt').textContent = 'Since ' + new Date(data.startedAt).toLocaleString();
+
+      document.getElementById('totalOrders').textContent = (data.totalOrders || 0).toLocaleString();
+      document.getElementById('liquidOrders').textContent = (data.liquidOrders || 0).toLocaleString();
+      document.getElementById('pairsCount').textContent = (data.pairsCount || 0).toLocaleString();
+      document.getElementById('cachedPairs').textContent = (data.cachedPairs || 0).toLocaleString();
 
       if (data.wallet) {
         document.getElementById('walletAddress').textContent = data.wallet;

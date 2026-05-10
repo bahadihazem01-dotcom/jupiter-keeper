@@ -8,7 +8,7 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
-import { getQuote, getSwapIx } from "./jupiterApi";
+import { getQuote, getSwapIx, failedPairCache } from "./jupiterApi";
 import { Wallet, BN } from "@coral-xyz/anchor";
 import { bs58 } from "@coral-xyz/anchor/dist/cjs/utils/bytes";
 import { getTakerFee } from "./fee";
@@ -151,7 +151,6 @@ export async function main() {
       }
 
       // Filter to orders with liquid output tokens (SOL, USDC, USDT)
-      // These are the only ones likely to have Jupiter swap routes
       const LIQUID_MINTS = new Set([
         "So11111111111111111111111111111111111111112",  // SOL
         "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // USDC
@@ -161,7 +160,6 @@ export async function main() {
       const liquidOrders = pendingOrders.filter(
         (order) => LIQUID_MINTS.has(order.account.outputMint.toBase58())
       );
-      logger.info(`Filtered to ${liquidOrders.length} orders with liquid output tokens`);
 
       // Group orders by pair
       const pendingOrderGroup = liquidOrders.reduce(
@@ -178,8 +176,8 @@ export async function main() {
         {}
       );
 
-      // Sort each group by best price and pick top 3 per pair
-      let filterOrders: { publicKey: PublicKey; account: Order }[] = [];
+      // Pick the best (lowest price ratio) order per pair
+      const bestPerPair: { publicKey: PublicKey; account: Order }[] = [];
       Object.values(pendingOrderGroup).forEach((orders) => {
         const sorted = orders.sort((a, b) => {
           const aPrice = new Decimal(a.account.takingAmount.toString()).div(
@@ -190,11 +188,27 @@ export async function main() {
           );
           return aPrice.cmp(bPrice);
         });
-        filterOrders.push(...sorted.slice(0, 3));
+        bestPerPair.push(sorted[0]);
       });
 
-      // Limit total orders to check per cycle to avoid rate limiting
-      filterOrders = filterOrders.slice(0, CONFIG.maxOrdersPerCycle);
+      // Shuffle to cover different pairs each cycle (not always the same first N)
+      for (let i = bestPerPair.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [bestPerPair[i], bestPerPair[j]] = [bestPerPair[j], bestPerPair[i]];
+      }
+
+      // Take up to maxOrdersPerCycle
+      const filterOrders = bestPerPair.slice(0, CONFIG.maxOrdersPerCycle);
+      const pairsCount = Object.keys(pendingOrderGroup).length;
+      logger.info(`Checking ${filterOrders.length} orders from ${pairsCount} pairs (${liquidOrders.length} liquid orders)`);
+
+      // Update dashboard with order stats
+      updateDashboard({
+        totalOrders: pendingOrders.length,
+        liquidOrders: liquidOrders.length,
+        pairsCount,
+        cachedPairs: failedPairCache.size,
+      });
 
       // Process each order
       for (const order of filterOrders) {

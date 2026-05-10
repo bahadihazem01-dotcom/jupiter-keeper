@@ -21,7 +21,7 @@ export const CONFIG = {
   orderDelayMs: parseInt(process.env.ORDER_DELAY_MS || "1000"),
 
   // Maximum number of orders to process per cycle
-  maxOrdersPerCycle: parseInt(process.env.MAX_ORDERS_PER_CYCLE || "10"),
+  maxOrdersPerCycle: parseInt(process.env.MAX_ORDERS_PER_CYCLE || "50"),
 
   // Jupiter API base URL
   jupiterApiBaseUrl:

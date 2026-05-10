@@ -22,7 +22,7 @@ const RETRY_DELAY_MS = 1000;
 const QUOTE_COOLDOWN_MS = 500; // delay between quote requests to avoid rate limits
 
 // Cache of failed mint pairs to avoid re-quoting dead tokens
-const failedPairCache = new Map<string, number>(); // pair key -> timestamp
+export const failedPairCache = new Map<string, number>(); // pair key -> timestamp
 const FAILED_PAIR_TTL_MS = 5 * 60 * 1000; // cache failed pairs for 5 minutes
 
 async function fetchWithRetry(
