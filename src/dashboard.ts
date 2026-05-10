@@ -1,5 +1,5 @@
 import http from "http";
-import { logger } from "./logger";
+import { logger, onLogEntry, getLogBuffer, LogEntry } from "./logger";
 import { CONFIG } from "./config";
 
 export interface DashboardData {
@@ -70,6 +70,7 @@ let dashboardData: DashboardData = {
 const startTime = Date.now();
 const MAX_RECENT_ORDERS = 50;
 const sseClients: Set<http.ServerResponse> = new Set();
+const logClients: Set<http.ServerResponse> = new Set();
 
 export function updateDashboard(partial: Partial<DashboardData>) {
   Object.assign(dashboardData, partial);
@@ -345,6 +346,23 @@ function getHTML(): string {
     </div>
 
     <div class="section">
+      <div class="section-header" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>Live Terminal</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <label style="font-size:11px;color:#8b949e;cursor:pointer;"><input type="checkbox" id="autoScroll" checked style="margin-right:4px;">Auto-scroll</label>
+          <select id="logFilter" style="background:#0d1117;color:#e1e4e8;border:1px solid #30363d;border-radius:4px;padding:2px 6px;font-size:11px;">
+            <option value="ALL">All Levels</option>
+            <option value="INFO">INFO only</option>
+            <option value="WARN">WARN+</option>
+            <option value="ERROR">ERROR only</option>
+          </select>
+          <button onclick="document.getElementById('logContainer').innerHTML=''" style="background:#21262d;color:#8b949e;border:1px solid #30363d;border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;">Clear</button>
+        </div>
+      </div>
+      <div id="logContainer" style="height:400px;overflow-y:auto;padding:12px;font-family:'Cascadia Code','Fira Code',monospace;font-size:12px;line-height:1.6;background:#0d1117;"></div>
+    </div>
+
+    <div class="section">
       <div class="section-header">Configuration</div>
       <div class="config-grid" id="configGrid">
       </div>
@@ -442,12 +460,81 @@ function getHTML(): string {
 
     // Also fetch initial data
     fetch('/api/data').then(function(r) { return r.json(); }).then(update);
+
+    // Log colors
+    var levelColors = {
+      INFO: '#3fb950',
+      WARN: '#d29922',
+      ERROR: '#f85149',
+      DEBUG: '#8b949e'
+    };
+
+    var levelPriority = { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3 };
+
+    function shouldShowLog(level) {
+      var filter = document.getElementById('logFilter').value;
+      if (filter === 'ALL') return true;
+      if (filter === 'INFO') return level === 'INFO';
+      if (filter === 'WARN') return levelPriority[level] >= 2;
+      if (filter === 'ERROR') return level === 'ERROR';
+      return true;
+    }
+
+    function addLogLine(entry) {
+      if (!shouldShowLog(entry.level)) return;
+      var container = document.getElementById('logContainer');
+      var line = document.createElement('div');
+      var time = entry.timestamp.split('T')[1].replace('Z','');
+      var color = levelColors[entry.level] || '#e1e4e8';
+      var dataStr = entry.data ? ' ' + JSON.stringify(entry.data) : '';
+      line.innerHTML = '<span style="color:#6e7681">' + time + '</span> <span style="color:' + color + ';font-weight:600">[' + entry.level + ']</span> ' + entry.message + '<span style="color:#6e7681">' + dataStr + '</span>';
+      line.style.borderBottom = '1px solid #161b22';
+      line.style.padding = '1px 0';
+      container.appendChild(line);
+
+      // Keep max 500 lines in DOM
+      while (container.children.length > 500) {
+        container.removeChild(container.firstChild);
+      }
+
+      if (document.getElementById('autoScroll').checked) {
+        container.scrollTop = container.scrollHeight;
+      }
+    }
+
+    // SSE for live logs
+    var logSource = new EventSource('/logs');
+    logSource.onmessage = function(e) {
+      var entry = JSON.parse(e.data);
+      addLogLine(entry);
+    };
+
+    // Re-filter when filter changes
+    document.getElementById('logFilter').addEventListener('change', function() {
+      document.getElementById('logContainer').innerHTML = '';
+      fetch('/api/logs').then(function(r) { return r.json(); }).then(function(logs) {
+        logs.forEach(addLogLine);
+      });
+    });
+
+    // Load initial logs
+    fetch('/api/logs').then(function(r) { return r.json(); }).then(function(logs) {
+      logs.forEach(addLogLine);
+    });
   </script>
 </body>
 </html>`;
 }
 
 export function startDashboardServer(port: number = 3000): http.Server {
+  // Forward log entries to SSE log clients
+  onLogEntry((entry) => {
+    const data = JSON.stringify(entry);
+    for (const client of logClients) {
+      client.write(`data: ${data}\n\n`);
+    }
+  });
+
   const server = http.createServer((req, res) => {
     if (req.url === "/events") {
       res.writeHead(200, {
@@ -462,6 +549,32 @@ export function startDashboardServer(port: number = 3000): http.Server {
       // Send initial data
       dashboardData.uptimeSeconds = Math.floor((Date.now() - startTime) / 1000);
       res.write(`data: ${JSON.stringify(dashboardData)}\n\n`);
+      return;
+    }
+
+    if (req.url === "/logs") {
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        "Access-Control-Allow-Origin": "*",
+      });
+      logClients.add(res);
+      req.on("close", () => logClients.delete(res));
+
+      // Send buffered logs
+      for (const entry of getLogBuffer()) {
+        res.write(`data: ${JSON.stringify(entry)}\n\n`);
+      }
+      return;
+    }
+
+    if (req.url === "/api/logs") {
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      });
+      res.end(JSON.stringify(getLogBuffer()));
       return;
     }
 
