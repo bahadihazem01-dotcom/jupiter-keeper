@@ -267,9 +267,12 @@ function getHTML(): string {
 <body>
   <div class="header">
     <h1>Jupiter Keeper</h1>
-    <div class="status">
-      <div class="dot" id="statusDot"></div>
-      <span id="statusText">Connecting...</span>
+    <div style="display:flex;align-items:center;gap:16px;">
+      <button id="exportBtn" onclick="exportData()" style="background:linear-gradient(135deg,#238636,#2ea043);color:#fff;border:none;border-radius:6px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;">Export All Data</button>
+      <div class="status">
+        <div class="dot" id="statusDot"></div>
+        <span id="statusText">Connecting...</span>
+      </div>
     </div>
   </div>
 
@@ -521,6 +524,19 @@ function getHTML(): string {
     fetch('/api/logs').then(function(r) { return r.json(); }).then(function(logs) {
       logs.forEach(addLogLine);
     });
+
+    // Export all data
+    function exportData() {
+      fetch('/api/export').then(function(r) { return r.json(); }).then(function(data) {
+        var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'jupiter-keeper-export-' + new Date().toISOString().replace(/[:.]/g, '-') + '.json';
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+    }
   </script>
 </body>
 </html>`;
@@ -575,6 +591,21 @@ export function startDashboardServer(port: number = 3000): http.Server {
         "Access-Control-Allow-Origin": "*",
       });
       res.end(JSON.stringify(getLogBuffer()));
+      return;
+    }
+
+    if (req.url === "/api/export") {
+      dashboardData.uptimeSeconds = Math.floor((Date.now() - startTime) / 1000);
+      const exportData = {
+        exportedAt: new Date().toISOString(),
+        dashboard: dashboardData,
+        logs: getLogBuffer(),
+      };
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      });
+      res.end(JSON.stringify(exportData));
       return;
     }
 
