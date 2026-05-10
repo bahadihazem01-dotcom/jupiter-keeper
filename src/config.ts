@@ -27,8 +27,8 @@ export const CONFIG = {
   jupiterApiBaseUrl:
     process.env.JUPITER_API_BASE_URL || "https://api.jup.ag/swap/v1",
 
-  // Slippage in basis points for Jupiter quotes
-  slippageBps: parseInt(process.env.SLIPPAGE_BPS || "0"),
+  // Slippage in basis points for Jupiter quotes (50 = 0.5%)
+  slippageBps: parseInt(process.env.SLIPPAGE_BPS || "50"),
 
   // Whether to skip orders where maker output account is closed
   skipClosedMakerAccounts: true,

@@ -345,15 +345,21 @@ export async function main() {
           ? profitLamports.muln(10000).div(quoteOutAmount).toNumber()
           : 0;
 
-        if (quoteOutAmount.lt(takingAmountWithTakerFee)) {
+        // Account for slippage in profitability check
+        const slippageMultiplier = 10000 - CONFIG.slippageBps;
+        const quoteAfterSlippage = quoteOutAmount.muln(slippageMultiplier).divn(10000);
+
+        if (quoteAfterSlippage.lt(takingAmountWithTakerFee)) {
           const gap = new Decimal(takingAmountWithTakerFee.toString())
             .div(quoteOutAmount.toString())
             .toFixed(2);
           logger.info(`Order ${orderKey} NOT profitable`, {
             quoteOut: quoteOutAmount.toString(),
+            afterSlippage: quoteAfterSlippage.toString(),
             required: takingAmountWithTakerFee.toString(),
             gapMultiple: gap + "x",
             takerFeeBps: takerFee,
+            slippageBps: CONFIG.slippageBps,
           });
           stats.ordersSkipped++;
           continue;
@@ -441,29 +447,60 @@ export async function main() {
             { skipPreflight: true, maxRetries: 2 }
           );
 
-          logger.info(`Order executed successfully`, {
+          logger.info(`Transaction sent`, {
             order: orderKey,
             txid,
             profitBps,
             solscan: `https://solscan.io/tx/${txid}`,
           });
 
-          stats.ordersExecuted++;
-          stats.totalProfit = stats.totalProfit.add(
-            new Decimal(profitLamports.toString())
-          );
+          // Confirm transaction on-chain
+          logger.info(`Confirming transaction...`, { txid: txid.slice(0, 20) });
+          const confirmation = await connection.confirmTransaction(txid, "confirmed");
 
-          addRecentOrder({
-            timestamp: new Date().toISOString(),
-            orderKey,
-            inputMint: inputMint.toBase58(),
-            outputMint: outputMint.toBase58(),
-            profitBps,
-            txid,
-            status: "executed",
-          });
+          if (confirmation.value.err) {
+            logger.error(`Transaction FAILED on-chain`, {
+              order: orderKey,
+              txid,
+              error: JSON.stringify(confirmation.value.err),
+            });
+            stats.ordersFailed++;
 
-          // Update balance after execution
+            addRecentOrder({
+              timestamp: new Date().toISOString(),
+              orderKey,
+              inputMint: inputMint.toBase58(),
+              outputMint: outputMint.toBase58(),
+              profitBps,
+              txid,
+              status: "failed",
+              reason: `On-chain error: ${JSON.stringify(confirmation.value.err)}`,
+            });
+          } else {
+            logger.info(`Order CONFIRMED on-chain!`, {
+              order: orderKey,
+              txid,
+              profitBps,
+              solscan: `https://solscan.io/tx/${txid}`,
+            });
+
+            stats.ordersExecuted++;
+            stats.totalProfit = stats.totalProfit.add(
+              new Decimal(profitLamports.toString())
+            );
+
+            addRecentOrder({
+              timestamp: new Date().toISOString(),
+              orderKey,
+              inputMint: inputMint.toBase58(),
+              outputMint: outputMint.toBase58(),
+              profitBps,
+              txid,
+              status: "executed",
+            });
+          }
+
+          // Update balance after execution attempt
           const postBal = await checkBalance(connection, wallet.publicKey);
           updateDashboard({ solBalance: postBal.solBalance });
         } catch (err) {
