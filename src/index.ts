@@ -165,7 +165,7 @@ export async function main() {
         {}
       );
 
-      // Sort each group by best price and pick top orders
+      // Sort each group by best price and pick top 3 per pair
       let filterOrders: { publicKey: PublicKey; account: Order }[] = [];
       Object.values(pendingOrderGroup).forEach((orders) => {
         const sorted = orders.sort((a, b) => {
@@ -177,8 +177,11 @@ export async function main() {
           );
           return aPrice.cmp(bPrice);
         });
-        filterOrders.push(...sorted.slice(0, CONFIG.maxOrdersPerCycle));
+        filterOrders.push(...sorted.slice(0, 3));
       });
+
+      // Limit total orders to check per cycle to avoid rate limiting
+      filterOrders = filterOrders.slice(0, CONFIG.maxOrdersPerCycle);
 
       // Process each order
       for (const order of filterOrders) {

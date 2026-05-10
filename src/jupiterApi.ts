@@ -17,8 +17,9 @@ export interface QuoteResponse {
   timeTaken: number;
 }
 
-const MAX_RETRIES = 3;
+const MAX_RETRIES = 5;
 const RETRY_DELAY_MS = 1000;
+const QUOTE_COOLDOWN_MS = 200; // delay between quote requests to avoid rate limits
 
 async function fetchWithRetry(
   url: string,
@@ -53,12 +54,23 @@ async function fetchWithRetry(
   throw new Error("Exhausted retries");
 }
 
+// Throttle quote requests
+let lastQuoteTime = 0;
+
 export const getQuote = async (
   fromMint: PublicKey,
   toMint: PublicKey,
   amount: number | string
 ): Promise<QuoteResponse | null> => {
   try {
+    // Rate limit ourselves
+    const now = Date.now();
+    const elapsed = now - lastQuoteTime;
+    if (elapsed < QUOTE_COOLDOWN_MS) {
+      await new Promise((r) => setTimeout(r, QUOTE_COOLDOWN_MS - elapsed));
+    }
+    lastQuoteTime = Date.now();
+
     const url =
       `${CONFIG.jupiterApiBaseUrl}/quote` +
       `?outputMint=${toMint.toBase58()}` +
