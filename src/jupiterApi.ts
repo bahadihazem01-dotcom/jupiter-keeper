@@ -19,7 +19,11 @@ export interface QuoteResponse {
 
 const MAX_RETRIES = 5;
 const RETRY_DELAY_MS = 1000;
-const QUOTE_COOLDOWN_MS = 200; // delay between quote requests to avoid rate limits
+const QUOTE_COOLDOWN_MS = 500; // delay between quote requests to avoid rate limits
+
+// Cache of failed mint pairs to avoid re-quoting dead tokens
+const failedPairCache = new Map<string, number>(); // pair key -> timestamp
+const FAILED_PAIR_TTL_MS = 5 * 60 * 1000; // cache failed pairs for 5 minutes
 
 async function fetchWithRetry(
   url: string,
@@ -62,7 +66,14 @@ export const getQuote = async (
   toMint: PublicKey,
   amount: number | string
 ): Promise<QuoteResponse | null> => {
+  const pairKey = `${fromMint.toBase58()}-${toMint.toBase58()}`;
   try {
+    // Check failed pair cache
+    const cachedFailTime = failedPairCache.get(pairKey);
+    if (cachedFailTime && Date.now() - cachedFailTime < FAILED_PAIR_TTL_MS) {
+      return null; // skip known-bad pairs silently
+    }
+
     // Rate limit ourselves
     const now = Date.now();
     const elapsed = now - lastQuoteTime;
@@ -80,16 +91,21 @@ export const getQuote = async (
 
     const response = await fetchWithRetry(url);
     if (!response.ok) {
-      logger.error("Quote API error", {
+      logger.debug("Quote API error", {
         status: response.status,
-        inputMint: fromMint.toBase58(),
-        outputMint: toMint.toBase58(),
+        inputMint: fromMint.toBase58().slice(0, 8),
+        outputMint: toMint.toBase58().slice(0, 8),
       });
+      // Cache 400 errors (no route) so we don't retry for a while
+      if (response.status === 400) {
+        failedPairCache.set(pairKey, Date.now());
+      }
       return null;
     }
     return await response.json();
   } catch (err) {
-    logger.error("Failed to get quote", { error: String(err) });
+    logger.debug("Failed to get quote", { error: String(err) });
+    failedPairCache.set(pairKey, Date.now());
     return null;
   }
 };

@@ -150,8 +150,21 @@ export async function main() {
         continue;
       }
 
+      // Filter to orders with liquid output tokens (SOL, USDC, USDT)
+      // These are the only ones likely to have Jupiter swap routes
+      const LIQUID_MINTS = new Set([
+        "So11111111111111111111111111111111111111112",  // SOL
+        "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // USDC
+        "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",  // USDT
+      ]);
+
+      const liquidOrders = pendingOrders.filter(
+        (order) => LIQUID_MINTS.has(order.account.outputMint.toBase58())
+      );
+      logger.info(`Filtered to ${liquidOrders.length} orders with liquid output tokens`);
+
       // Group orders by pair
-      const pendingOrderGroup = pendingOrders.reduce(
+      const pendingOrderGroup = liquidOrders.reduce(
         (
           group: Record<string, { publicKey: PublicKey; account: Order }[]>,
           order
