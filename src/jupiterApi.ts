@@ -1,4 +1,6 @@
 import { PublicKey } from "@solana/web3.js";
+import { CONFIG } from "./config";
+import { logger } from "./logger";
 
 export interface QuoteResponse {
   inputMint: string;
@@ -15,34 +17,94 @@ export interface QuoteResponse {
   timeTaken: number;
 }
 
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1000;
+
+async function fetchWithRetry(
+  url: string,
+  options?: RequestInit,
+  retries = MAX_RETRIES
+): Promise<Response> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+      if (response.ok) return response;
+
+      if (response.status === 429) {
+        const waitMs = RETRY_DELAY_MS * attempt;
+        logger.warn("Rate limited by Jupiter API, retrying", {
+          attempt,
+          waitMs,
+        });
+        await new Promise((r) => setTimeout(r, waitMs));
+        continue;
+      }
+
+      if (attempt === retries) return response;
+    } catch (err) {
+      if (attempt === retries) throw err;
+      logger.warn("Jupiter API request failed, retrying", {
+        attempt,
+        error: String(err),
+      });
+      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * attempt));
+    }
+  }
+  throw new Error("Exhausted retries");
+}
+
 export const getQuote = async (
   fromMint: PublicKey,
   toMint: PublicKey,
   amount: number | string
-): Promise<QuoteResponse> => {
-  return fetch(
-    `https://quote-api.jup.ag/v6/quote?outputMint=${toMint.toBase58()}&inputMint=${fromMint.toBase58()}&amount=${amount}&slippageBps=0`
-  )
-    .then((response) => response.json())
-    .catch((err) => {
-      throw err;
-    });
+): Promise<QuoteResponse | null> => {
+  try {
+    const url =
+      `${CONFIG.jupiterApiBaseUrl}/quote` +
+      `?outputMint=${toMint.toBase58()}` +
+      `&inputMint=${fromMint.toBase58()}` +
+      `&amount=${amount}` +
+      `&slippageBps=${CONFIG.slippageBps}`;
+
+    const response = await fetchWithRetry(url);
+    if (!response.ok) {
+      logger.error("Quote API error", {
+        status: response.status,
+        inputMint: fromMint.toBase58(),
+        outputMint: toMint.toBase58(),
+      });
+      return null;
+    }
+    return await response.json();
+  } catch (err) {
+    logger.error("Failed to get quote", { error: String(err) });
+    return null;
+  }
 };
 
-export const getSwapIx = async (user: PublicKey, quote: any) => {
-  return fetch(`https://quote-api.jup.ag/v6/swap`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      quoteResponse: quote,
-      userPublicKey: user.toBase58(),
-      computeUnitPriceMicroLamports: "auto",
-    }),
-  })
-    .then((response) => response.json())
-    .catch((err) => {
-      throw err;
+export const getSwapIx = async (
+  user: PublicKey,
+  quote: QuoteResponse
+): Promise<{ swapTransaction: string } | null> => {
+  try {
+    const response = await fetchWithRetry(`${CONFIG.jupiterApiBaseUrl}/swap`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        quoteResponse: quote,
+        userPublicKey: user.toBase58(),
+        computeUnitPriceMicroLamports: "auto",
+      }),
     });
+
+    if (!response.ok) {
+      logger.error("Swap API error", { status: response.status });
+      return null;
+    }
+
+    return await response.json();
+  } catch (err) {
+    logger.error("Failed to get swap instructions", { error: String(err) });
+    return null;
+  }
 };
