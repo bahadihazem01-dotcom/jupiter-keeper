@@ -134,6 +134,8 @@ export const getSwapIx = async (
         quoteResponse: quote,
         userPublicKey: user.toBase58(),
         computeUnitPriceMicroLamports: "auto",
+        wrapAndUnwrapSol: true,
+        dynamicComputeUnitLimit: true,
       }),
     });
 

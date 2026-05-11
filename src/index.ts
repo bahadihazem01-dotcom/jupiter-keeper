@@ -164,20 +164,33 @@ export async function main() {
         continue;
       }
 
-      // Filter to orders with liquid output tokens (SOL, USDC, USDT)
-      const LIQUID_MINTS = new Set([
-        "So11111111111111111111111111111111111111112",  // SOL
-        "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // USDC
-        "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",  // USDT
-      ]);
+      // Check balance to decide mode: SOL-only (cheap) vs all liquid tokens
+      const SOL_MINT = "So11111111111111111111111111111111111111112";
+      const ATA_THRESHOLD_SOL = 0.005; // need ~0.005 SOL to afford ATA creation
+      const cycleBal = await checkBalance(connection, wallet.publicKey);
+      updateDashboard({ solBalance: cycleBal.solBalance });
+      const solOnlyMode = cycleBal.solBalance < ATA_THRESHOLD_SOL;
+
+      const LIQUID_MINTS = solOnlyMode
+        ? new Set([SOL_MINT])  // SOL-only mode: no ATA creation needed
+        : new Set([
+            SOL_MINT,
+            "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // USDC
+            "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",  // USDT
+          ]);
+
+      if (solOnlyMode) {
+        logger.info(`SOL-ONLY MODE (balance ${cycleBal.solBalance.toFixed(4)} < ${ATA_THRESHOLD_SOL} SOL) — skipping USDC/USDT output orders to avoid ATA costs`);
+      }
 
       const liquidOrders = pendingOrders.filter(
         (order) => LIQUID_MINTS.has(order.account.outputMint.toBase58())
       );
-      logger.info(`Filtered to ${liquidOrders.length} liquid orders`, {
+      logger.info(`Filtered to ${liquidOrders.length} ${solOnlyMode ? "SOL-output" : "liquid"} orders`, {
         total: pendingOrders.length,
         filtered: pendingOrders.length - liquidOrders.length,
         liquid: liquidOrders.length,
+        mode: solOnlyMode ? "SOL-only" : "all-liquid",
       });
 
       // Group orders by pair
