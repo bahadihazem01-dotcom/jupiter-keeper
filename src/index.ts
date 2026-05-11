@@ -392,76 +392,85 @@ export async function main() {
           continue;
         }
 
-        // Check if we need to create new token accounts (costs ~0.002 SOL each)
-        const mintsToCheck = [inputMint, outputMint];
-        let ataCreationCost = 0;
-        const atasNeeded: string[] = [];
+        // Capital check: keeper must have enough of the output token to fill the order
+        // fillOrder atomically swaps: keeper sends takingAmount of outputMint to maker,
+        // receives makingAmount of inputMint from escrow. Swap happens AFTER to replenish.
+        const outputMintStr = outputMint.toBase58();
+        const SOL_NATIVE = "So11111111111111111111111111111111111111112";
 
-        for (const mint of mintsToCheck) {
-          const mintStr = mint.toBase58();
-          // SOL doesn't need an ATA
-          if (mintStr === "So11111111111111111111111111111111111111112") continue;
-          // Already known to exist
-          if (existingAtaCache.has(mintStr)) continue;
-
-          const ata = getAssociatedTokenAddressSync(mint, wallet.publicKey);
-          const ataInfo = await connection.getAccountInfo(ata);
-          if (ataInfo) {
-            existingAtaCache.add(mintStr);
-          } else {
-            ataCreationCost += ATA_RENT_LAMPORTS;
-            atasNeeded.push(mintStr.slice(0, 8));
-          }
-        }
-
-        if (ataCreationCost > 0) {
+        if (outputMintStr === SOL_NATIVE) {
+          // For SOL-output orders, keeper pays SOL to maker
           const bal = await checkBalance(connection, wallet.publicKey);
-          const availableLamports = Math.floor((bal.solBalance - CONFIG.minSolBalance) * 1e9);
-          if (availableLamports < ataCreationCost + 10000) {
-            logger.warn(`Skipping order ${orderKey}: need ${(ataCreationCost / 1e9).toFixed(4)} SOL for new token accounts but only ${((availableLamports) / 1e9).toFixed(4)} SOL available`, {
-              atasNeeded,
-              costSol: ataCreationCost / 1e9,
-              availableSol: availableLamports / 1e9,
+          const neededSol = Number(takingAmountWithTakerFee.toString()) / 1e9;
+          const availableSol = bal.solBalance - CONFIG.minSolBalance - 0.001; // reserve for fees
+          if (availableSol < neededSol) {
+            logger.warn(`Skipping order ${orderKey}: need ${neededSol.toFixed(4)} SOL to fill but only ${availableSol.toFixed(4)} available`, {
+              neededSol,
+              availableSol,
+              balance: bal.solBalance,
             });
             stats.ordersSkipped++;
             addRecentOrder({
               timestamp: new Date().toISOString(),
               orderKey,
               inputMint: inputMint.toBase58(),
-              outputMint: outputMint.toBase58(),
+              outputMint: outputMintStr,
               profitBps,
               txid: null,
               status: "skipped",
-              reason: "Can't afford ATA creation",
+              reason: `Need ${neededSol.toFixed(4)} SOL to fill`,
             });
             continue;
           }
-          logger.info(`Will create ${atasNeeded.length} new token account(s)`, {
-            atasNeeded,
-            costSol: ataCreationCost / 1e9,
-          });
+        } else {
+          // For non-SOL output orders, keeper needs output tokens in their ATA
+          const ata = getAssociatedTokenAddressSync(outputMint, wallet.publicKey);
+          const ataInfo = await connection.getAccountInfo(ata);
+          if (!ataInfo) {
+            logger.debug(`Skipping order ${orderKey}: no ${outputMintStr.slice(0, 8)} token account`);
+            stats.ordersSkipped++;
+            continue;
+          }
+          // TODO: check token balance in ATA >= takingAmountWithTakerFee
+        }
+
+        // Check ATA for input mint (where keeper receives tokens from escrow)
+        const inputMintStr = inputMint.toBase58();
+        if (inputMintStr !== SOL_NATIVE) {
+          if (!existingAtaCache.has(inputMintStr)) {
+            const ata = getAssociatedTokenAddressSync(inputMint, wallet.publicKey);
+            const ataInfo = await connection.getAccountInfo(ata);
+            if (ataInfo) {
+              existingAtaCache.add(inputMintStr);
+            } else {
+              // fillOrder SDK creates ATAs automatically, but we need SOL for rent
+              const bal = await checkBalance(connection, wallet.publicKey);
+              const available = (bal.solBalance - CONFIG.minSolBalance) * 1e9;
+              if (available < ATA_RENT_LAMPORTS + 10000) {
+                logger.warn(`Skipping order ${orderKey}: can't afford ATA for received tokens`);
+                stats.ordersSkipped++;
+                continue;
+              }
+            }
+          }
         }
 
         logger.info(`Executing order ${orderKey}`, {
           profitBps,
           quoteOut: quoteOutAmount.toString(),
           required: takingAmountWithTakerFee.toString(),
-          newAtas: atasNeeded.length > 0 ? atasNeeded : undefined,
         });
 
         try {
-          // Balance check before execution
-          const balanceOk = await validateBalance(
-            connection,
-            wallet.publicKey
-          );
-          if (!balanceOk) {
-            logger.warn("Insufficient SOL, skipping execution");
-            stats.ordersSkipped++;
-            break; // break out of order loop, wait for next cycle
-          }
+          // Get fill order instruction (must run FIRST to release escrow tokens)
+          const limitOrderTx = await limitOrder.fillOrder({
+            owner: wallet.publicKey,
+            orderAccount: order,
+            amount: makingAmount,
+            expectedOutAmount: takingAmount,
+          });
 
-          // Get swap transaction
+          // Get swap transaction (runs AFTER fill to convert received tokens back)
           const swapResult = await getSwapIx(wallet.publicKey, route);
           if (!swapResult) {
             logger.error(`Failed to get swap tx for order ${orderKey}`);
@@ -490,30 +499,40 @@ export async function main() {
             })
           );
 
-          const txMessage = TransactionMessage.decompile(
+          const swapMessage = TransactionMessage.decompile(
             swapTransaction.message,
             { addressLookupTableAccounts: swapALT }
           );
 
-          // Get fill order instruction
-          const limitOrderTx = await limitOrder.fillOrder({
-            owner: wallet.publicKey,
-            orderAccount: order,
-            amount: makingAmount,
-            expectedOutAmount: takingAmount,
-          });
+          // Build combined tx: fill order FIRST, then swap
+          // Extract compute budget instructions from swap tx (keep at top)
+          const computeBudgetIxs = swapMessage.instructions.filter(
+            (ix) => ix.programId.toBase58() === "ComputeBudget111111111111111111111111111111"
+          );
+          const swapOnlyIxs = swapMessage.instructions.filter(
+            (ix) => ix.programId.toBase58() !== "ComputeBudget111111111111111111111111111111"
+          );
 
-          // Combine swap + fill instructions
-          txMessage.instructions.push(...limitOrderTx.instructions);
-          txMessage.recentBlockhash = (
-            await connection.getLatestBlockhash()
-          ).blockhash;
-          swapTransaction.message = txMessage.compileToV0Message([...swapALT]);
-          swapTransaction.sign([wallet.payer]);
+          // Order: [ComputeBudget] → [Fill Order + ATAs] → [Swap]
+          const allInstructions = [
+            ...computeBudgetIxs,
+            ...limitOrderTx.instructions,
+            ...swapOnlyIxs,
+          ];
+
+          const { blockhash } = await connection.getLatestBlockhash();
+          const messageV0 = new TransactionMessage({
+            payerKey: wallet.publicKey,
+            recentBlockhash: blockhash,
+            instructions: allInstructions,
+          }).compileToV0Message([...swapALT]);
+
+          const tx = new VersionedTransaction(messageV0);
+          tx.sign([wallet.payer]);
 
           // Send transaction
           const txid = await connection.sendRawTransaction(
-            swapTransaction.serialize(),
+            tx.serialize(),
             { skipPreflight: true, maxRetries: 2 }
           );
 
