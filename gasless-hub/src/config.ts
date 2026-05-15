@@ -45,8 +45,11 @@ export function loadConfig(): GaslessHubConfig {
     }
   }
 
-  const feeMargin = parseFloat(optionalEnv("FEE_MARGIN", "0"));
-  const feeTokenMintStr = optionalEnv("FEE_TOKEN_MINT", "");
+  const feeMargin = parseFloat(optionalEnv("FEE_MARGIN", "0.1"));
+  const feeTokenMintStr = optionalEnv(
+    "FEE_TOKEN_MINT",
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+  );
   const feeTokenMint = feeTokenMintStr ? new PublicKey(feeTokenMintStr) : null;
   const koraEndpoint = optionalEnv("KORA_ENDPOINT", "http://localhost:8080");
   const jitoBlockEngineUrl = optionalEnv(

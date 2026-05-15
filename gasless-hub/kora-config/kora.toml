@@ -2,11 +2,11 @@
 # Kora Paymaster Configuration — Optimized for Cost Efficiency
 # ============================================================
 #
-# This config is tuned for SOL-only mode:
+# This config is tuned for earning USDC revenue:
 # - You pay gas in SOL (ultra cheap: ~$0.00085/tx)
-# - No token fees required from users
-# - 10 cents of SOL covers ~120 transactions
-# - Switch to margin/fixed pricing later when you want to charge users
+# - Users pay YOU in USDC for the gas fee + your margin
+# - Token accounts (ATAs) are auto-created by Kora on first use
+# - No need to pre-fund USDC accounts — Kora handles it
 
 [kora]
 # Rate limiting: max requests per second
@@ -48,9 +48,9 @@ get_version = true
 [validation]
 # Max lamports the fee payer can spend per transaction
 # Keep this low to prevent abuse
-max_allowed_lamports = 100000  # ~0.0001 SOL — enough for gas, prevents big drains
+max_allowed_lamports = 5000000  # ~0.005 SOL — covers gas + ATA creation (~0.002 SOL each)
 max_signatures = 10
-price_source = "Mock"  # SOL-only mode — no oracle needed (switch to "Jupiter" when charging tokens)
+price_source = "Jupiter"  # Real-time pricing for USDC fee conversion
 allow_durable_transactions = false
 
 # Programs allowed in transactions the Paymaster will sign
@@ -65,15 +65,15 @@ allowed_programs = [
     "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",  # Orca Whirlpool
 ]
 
-# Tokens accepted for fee payment (empty = SOL-only, no token fees)
-# Uncomment to start charging users in USDC:
-# allowed_tokens = [
-#     "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", # USDC
-# ]
-allowed_tokens = []
+# Tokens accepted for fee payment — users pay gas in USDC, you keep the margin
+allowed_tokens = [
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", # USDC
+]
 
 # SPL tokens that can be used in paid transactions
-allowed_spl_paid_tokens = []
+allowed_spl_paid_tokens = [
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", # USDC
+]
 
 disallowed_accounts = []
 
@@ -134,11 +134,10 @@ allow_close = false
 # Pricing — YOUR revenue model
 # ============================================================
 [validation.price]
-# SOL-ONLY MODE: "free" = you absorb gas costs (they're tiny)
-# Later switch to "margin" to start earning:
-#   type = "margin"
-#   margin = 0.1   # 10% margin = your cut
-type = "free"
+# "margin" = charge gas cost + X% margin (your profit in USDC)
+# Users pay USDC, you keep the 10% margin on top of gas costs
+type = "margin"
+margin = 0.1   # 10% margin = your cut in USDC
 
 [validation.token_2022]
 transfer_hook_policy = "deny_mutable_for_delayed_signing"

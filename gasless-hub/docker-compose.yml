@@ -7,6 +7,10 @@
 #   1. Copy .env.example to .env and fill in your fee payer key
 #   2. Run: docker compose up -d
 #   3. Your Paymaster is now live at http://localhost:8080
+#
+# Token accounts (ATAs) are auto-created by Kora when needed.
+# You do NOT need to pre-create USDC accounts — Kora handles it
+# using the fee payer's SOL (costs ~0.002 SOL per ATA, one-time).
 
 services:
   kora:
