@@ -1,0 +1,12 @@
+# Never commit wallet keys
+wallet/
+
+# NotArb binaries (downloaded, not committed)
+notarb/
+
+# Active configs (may contain API keys)
+bot-config.toml
+jupiter-config.toml
+
+# Logs
+*.log
