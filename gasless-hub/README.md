@@ -1,6 +1,6 @@
 # Solana Gasless Hub
 
-**Plug-and-play gasless transaction relayer for Solana.** You provide the infrastructure, the Paymaster handles gas fees, and you earn a cut on every transaction.
+**Plug-and-play gasless transaction relayer for Solana.** You provide the infrastructure, the Paymaster handles gas fees. Start with SOL-only mode (10 cents is enough), then switch to margin pricing to earn a cut later.
 
 Built on top of [Kora](https://github.com/solana-foundation/kora) (Solana Foundation's official Paymaster) + Jito bundles.
 
@@ -13,22 +13,21 @@ User (no SOL needed)          Your Infrastructure            Solana Network
 │  "I want to      │────>│                         │────>│  Transaction │
 │   swap USDC"     │     │  1. Validates tx         │     │  confirmed!  │
 │                  │     │  2. Pays SOL gas fee      │     │              │
-│  Signs tx        │     │  3. Charges user in USDC  │     │              │
-│  Pays ZERO SOL   │     │  4. YOU keep the margin   │     │              │
+│  Signs tx        │     │  (~$0.00085 per tx)       │     │              │
+│  Pays ZERO SOL   │     │  3. Your SOL covers gas   │     │              │
 └──────────────────┘     └─────────────────────────┘     └──────────────┘
 ```
 
-### The Economics
+### The Economics (SOL-only mode)
 
 | Metric | Value |
 |--------|-------|
 | Solana gas fee per tx | ~0.000005 SOL (~$0.00085) |
+| **$0.10 of SOL covers** | **~120 transactions** |
 | $1 of SOL covers | ~200,000 transactions |
-| Your fee margin (10%) | ~$0.000085 per tx |
-| 1,000 txs/day profit | ~$0.085/day |
-| 10,000 txs/day profit | ~$0.85/day |
+| $5 of SOL covers | ~1,000,000 transactions |
 
-The key: **Solana fees are incredibly cheap.** You need almost zero capital to start, and your margin revenue grows with volume.
+The key: **Solana fees are incredibly cheap.** Even 10 cents of SOL gets you started. Later, switch to margin pricing to charge users in USDC and earn revenue.
 
 ## Quick Start
 
@@ -185,13 +184,13 @@ Add more programs to `allowed_programs` in `kora.toml` as needed.
 | `npm run build` | Compile TypeScript |
 | `npm run lint` | Type-check the code |
 
-## How to Get Started with Zero Money
+## How to Get Started with 10 Cents
 
 1. **Generate a wallet** — `npm run setup` (free)
-2. **Get tiny SOL** — Ask a friend, use a faucet, or do one small trade. You need ~0.01 SOL ($1.70) for 2,000+ transactions
+2. **Send 10 cents of SOL** — to the generated wallet address (~120 transactions covered)
 3. **Start the Paymaster** — `docker compose up -d`
 4. **Start relaying** — `npm start`
-5. **Earn margin** — Every transaction you relay earns you a fee margin in USDC/tokens
+5. **Scale up later** — When you have more volume, switch to margin pricing in `kora.toml` to start earning from fees
 
 ## Kora Documentation
 

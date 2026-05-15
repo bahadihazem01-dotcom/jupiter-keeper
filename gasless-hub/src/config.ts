@@ -8,7 +8,7 @@ export interface GaslessHubConfig {
   connection: Connection;
   feePayer: Keypair;
   feeMargin: number;
-  feeTokenMint: PublicKey;
+  feeTokenMint: PublicKey | null;
   koraEndpoint: string;
   jitoBlockEngineUrl: string;
   monitorPort: number;
@@ -45,10 +45,9 @@ export function loadConfig(): GaslessHubConfig {
     }
   }
 
-  const feeMargin = parseFloat(optionalEnv("FEE_MARGIN", "0.1"));
-  const feeTokenMint = new PublicKey(
-    optionalEnv("FEE_TOKEN_MINT", "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")
-  );
+  const feeMargin = parseFloat(optionalEnv("FEE_MARGIN", "0"));
+  const feeTokenMintStr = optionalEnv("FEE_TOKEN_MINT", "");
+  const feeTokenMint = feeTokenMintStr ? new PublicKey(feeTokenMintStr) : null;
   const koraEndpoint = optionalEnv("KORA_ENDPOINT", "http://localhost:8080");
   const jitoBlockEngineUrl = optionalEnv(
     "JITO_BLOCK_ENGINE_URL",

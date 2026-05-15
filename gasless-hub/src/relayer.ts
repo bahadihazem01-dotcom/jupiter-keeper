@@ -118,8 +118,10 @@ async function main() {
 
   console.log("Relayer is running. Transactions will be relayed through the Kora Paymaster.");
   console.log(`  Endpoint: ${cfg.koraEndpoint}`);
-  console.log(`  Fee margin: ${(cfg.feeMargin * 100).toFixed(1)}%`);
-  console.log(`  Fee token: ${cfg.feeTokenMint.toBase58()}`);
+  console.log(`  Mode: ${cfg.feeMargin > 0 ? `Margin (${(cfg.feeMargin * 100).toFixed(1)}%)` : "SOL-only (free)"}`);
+  if (cfg.feeTokenMint) {
+    console.log(`  Fee token: ${cfg.feeTokenMint.toBase58()}`);
+  }
   console.log("");
   console.log("To submit gasless transactions, use the GaslessClient:");
   console.log("  import { GaslessClient } from './gasless-client'");

@@ -2,10 +2,11 @@
 # Kora Paymaster Configuration — Optimized for Cost Efficiency
 # ============================================================
 #
-# This config is tuned for a relayer/operator who wants to:
-# - Minimize SOL spend on gas
-# - Earn a fee margin from users paying in SPL tokens
-# - Support common DeFi operations (swaps, transfers)
+# This config is tuned for SOL-only mode:
+# - You pay gas in SOL (ultra cheap: ~$0.00085/tx)
+# - No token fees required from users
+# - 10 cents of SOL covers ~120 transactions
+# - Switch to margin/fixed pricing later when you want to charge users
 
 [kora]
 # Rate limiting: max requests per second
@@ -49,7 +50,7 @@ get_version = true
 # Keep this low to prevent abuse
 max_allowed_lamports = 100000  # ~0.0001 SOL — enough for gas, prevents big drains
 max_signatures = 10
-price_source = "Jupiter"  # Use real Jupiter prices for accurate fee conversion
+price_source = "Mock"  # SOL-only mode — no oracle needed (switch to "Jupiter" when charging tokens)
 allow_durable_transactions = false
 
 # Programs allowed in transactions the Paymaster will sign
@@ -64,16 +65,15 @@ allowed_programs = [
     "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",  # Orca Whirlpool
 ]
 
-# Tokens accepted for fee payment
-# Users pay gas in these tokens, you receive them as revenue
-allowed_tokens = [
-    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", # USDC
-]
+# Tokens accepted for fee payment (empty = SOL-only, no token fees)
+# Uncomment to start charging users in USDC:
+# allowed_tokens = [
+#     "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", # USDC
+# ]
+allowed_tokens = []
 
 # SPL tokens that can be used in paid transactions
-allowed_spl_paid_tokens = [
-    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", # USDC
-]
+allowed_spl_paid_tokens = []
 
 disallowed_accounts = []
 
@@ -134,11 +134,11 @@ allow_close = false
 # Pricing — YOUR revenue model
 # ============================================================
 [validation.price]
-# "margin" = charge base gas cost + X% margin (your profit)
-# "free" = you absorb all gas costs (good for attracting users initially)
-# "fixed" = charge a fixed token amount per tx
-type = "margin"
-margin = 0.1   # 10% margin on gas fees = your cut
+# SOL-ONLY MODE: "free" = you absorb gas costs (they're tiny)
+# Later switch to "margin" to start earning:
+#   type = "margin"
+#   margin = 0.1   # 10% margin = your cut
+type = "free"
 
 [validation.token_2022]
 transfer_hook_policy = "deny_mutable_for_delayed_signing"

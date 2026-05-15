@@ -1,6 +1,6 @@
 /**
- * Cost & Profit Monitor — Tracks how much SOL the fee payer is spending,
- * how much revenue is coming in from token fees, and your net profit.
+ * Cost Monitor — Tracks how much SOL the fee payer is spending
+ * and how many transactions you can still relay.
  *
  * Run with: npm run monitor
  */
@@ -66,13 +66,15 @@ function formatStats(stats: MonitorStats): string {
     "╠══════════════════════════════════════════════════════════╣",
     "║  ECONOMICS                                              ║",
     `║  Cost per TX:     ${stats.costPerTx.toFixed(6)} SOL (~$${(stats.costPerTx * SOL_PRICE_USD).toFixed(6)})`,
-    `║  Fee Margin:      ${(stats.feeMargin * 100).toFixed(1)}%`,
-    `║  Revenue per TX:  ${stats.revenuePerTx.toFixed(6)} SOL`,
-    `║  Profit per TX:   ${stats.profitPerTx.toFixed(6)} SOL (~$${(stats.profitPerTx * SOL_PRICE_USD).toFixed(6)})`,
+    `║  Mode:            ${stats.feeMargin > 0 ? `Margin (${(stats.feeMargin * 100).toFixed(1)}%)` : "SOL-only (free)"}`,
+    ...(stats.feeMargin > 0 ? [
+      `║  Revenue per TX:  ${stats.revenuePerTx.toFixed(6)} SOL`,
+      `║  Profit per TX:   ${stats.profitPerTx.toFixed(6)} SOL (~$${(stats.profitPerTx * SOL_PRICE_USD).toFixed(6)})`,
+    ] : []),
     "╠══════════════════════════════════════════════════════════╣",
     "║  CAPACITY                                               ║",
     `║  TXs Remaining:   ~${stats.estimatedTxsRemaining.toLocaleString()} transactions`,
-    `║  Break-even at:   ~${stats.txsUntilBreakeven.toLocaleString()} transactions relayed`,
+    ...(stats.feeMargin > 0 ? [`║  Break-even at:   ~${stats.txsUntilBreakeven.toLocaleString()} transactions relayed`] : []),
     "╠══════════════════════════════════════════════════════════╣",
     "║  COST BREAKDOWN                                         ║",
     `║  $1 SOL covers:   ~${Math.floor(1 / SOL_PER_TX).toLocaleString()} transactions`,
