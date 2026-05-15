@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flash Loan Arbitrage Dashboard</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #0a0a0f;
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      border-bottom: 1px solid #2a2a4a;
+      padding: 20px 30px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .header h1 {
+      font-size: 22px;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .header h1 span { color: #00d4aa; }
+
+    .header .subtitle {
+      font-size: 13px;
+      color: #888;
+      margin-top: 4px;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .status-running { background: #00d4aa22; color: #00d4aa; border: 1px solid #00d4aa44; }
+    .status-stopped { background: #ff444422; color: #ff4444; border: 1px solid #ff444444; }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .card {
+      background: #12121f;
+      border: 1px solid #2a2a4a;
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .card-full { grid-column: 1 / -1; }
+
+    .card h2 {
+      font-size: 16px;
+      color: #aaa;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 500;
+    }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .stat {
+      background: #1a1a2e;
+      border-radius: 8px;
+      padding: 14px;
+    }
+
+    .stat-label {
+      font-size: 11px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: #fff;
+      margin-top: 4px;
+    }
+
+    .stat-value.green { color: #00d4aa; }
+    .stat-value.blue { color: #4d9fff; }
+    .stat-value.yellow { color: #ffc107; }
+
+    .stat-sub {
+      font-size: 11px;
+      color: #666;
+      margin-top: 2px;
+    }
+
+    .wallet-address {
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      color: #4d9fff;
+      word-break: break-all;
+      background: #1a1a2e;
+      padding: 10px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 10px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: #00d4aa;
+      color: #000;
+    }
+
+    .btn-primary:hover { background: #00f0c0; }
+
+    .btn-danger {
+      background: #ff4444;
+      color: #fff;
+    }
+
+    .btn-danger:hover { background: #ff6666; }
+
+    .btn-secondary {
+      background: #2a2a4a;
+      color: #ddd;
+    }
+
+    .btn-secondary:hover { background: #3a3a5a; }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn + .btn { margin-left: 8px; }
+
+    .controls {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+
+    .log-box {
+      background: #0d0d18;
+      border: 1px solid #222;
+      border-radius: 8px;
+      padding: 12px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      max-height: 300px;
+      overflow-y: auto;
+      line-height: 1.6;
+      color: #aaa;
+    }
+
+    .log-box .log-line { white-space: pre-wrap; }
+    .log-box .log-time { color: #555; margin-right: 8px; }
+    .log-box .profit { color: #00d4aa; font-weight: bold; }
+    .log-box .error { color: #ff4444; }
+
+    /* Setup wizard */
+    .setup-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+
+    .setup-modal {
+      background: #12121f;
+      border: 1px solid #2a2a4a;
+      border-radius: 16px;
+      padding: 32px;
+      max-width: 520px;
+      width: 90%;
+    }
+
+    .setup-modal h2 {
+      color: #fff;
+      font-size: 22px;
+      margin-bottom: 8px;
+      text-transform: none;
+      letter-spacing: normal;
+    }
+
+    .setup-modal p {
+      color: #888;
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+
+    .setup-modal label {
+      display: block;
+      font-size: 13px;
+      color: #aaa;
+      margin-bottom: 6px;
+      margin-top: 16px;
+    }
+
+    .setup-modal input {
+      width: 100%;
+      padding: 10px 14px;
+      background: #1a1a2e;
+      border: 1px solid #2a2a4a;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 14px;
+      outline: none;
+    }
+
+    .setup-modal input:focus { border-color: #00d4aa; }
+
+    .setup-modal .setup-btn {
+      margin-top: 24px;
+      width: 100%;
+    }
+
+    .info-box {
+      background: #1a2a1a;
+      border: 1px solid #2a4a2a;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 13px;
+      color: #88cc88;
+      margin-top: 12px;
+      line-height: 1.5;
+    }
+
+    .steps {
+      display: flex;
+      gap: 16px;
+      margin: 20px 0;
+    }
+
+    .step {
+      flex: 1;
+      text-align: center;
+      padding: 16px;
+      background: #1a1a2e;
+      border-radius: 10px;
+    }
+
+    .step-num {
+      display: inline-block;
+      width: 28px;
+      height: 28px;
+      line-height: 28px;
+      border-radius: 50%;
+      background: #00d4aa;
+      color: #000;
+      font-weight: 700;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .step-label {
+      font-size: 12px;
+      color: #aaa;
+    }
+
+    .step.done .step-num { background: #00d4aa; }
+    .step.pending .step-num { background: #333; color: #666; }
+
+    a { color: #4d9fff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    @media (max-width: 768px) {
+      .container { grid-template-columns: 1fr; }
+      .stat-grid { grid-template-columns: 1fr; }
+      .steps { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h1><span>Flash Loan</span> Arbitrage Dashboard</h1>
+      <div class="subtitle">Powered by NotArb + Helius RPC — Zero Collateral</div>
+    </div>
+    <div id="header-status">
+      <span class="status-badge status-stopped" id="bot-badge">Bot: Stopped</span>
+    </div>
+  </div>
+
+  <!-- Setup Wizard (shown if not configured) -->
+  <div class="setup-overlay" id="setup-overlay" style="display:none">
+    <div class="setup-modal">
+      <h2>Welcome! Let's set up.</h2>
+      <p>This takes 30 seconds. You need a free Helius API key to start.</p>
+
+      <div class="steps">
+        <div class="step" id="step-1"><div class="step-num">1</div><div class="step-label">API Key</div></div>
+        <div class="step pending" id="step-2"><div class="step-num">2</div><div class="step-label">Wallet</div></div>
+        <div class="step pending" id="step-3"><div class="step-num">3</div><div class="step-label">Ready</div></div>
+      </div>
+
+      <label for="helius-key">Helius API Key <a href="https://dashboard.helius.dev" target="_blank">(get one free →)</a></label>
+      <input id="helius-key" type="text" placeholder="Paste your Helius API key here...">
+
+      <div class="info-box">
+        Free tier: 1M credits/month, 10 req/s.<br>
+        Sign up at <a href="https://dashboard.helius.dev" target="_blank">dashboard.helius.dev</a> — takes 1 minute.
+      </div>
+
+      <button class="btn btn-primary setup-btn" onclick="runQuickSetup()">Set Up & Generate Wallet</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <!-- Wallet Card -->
+    <div class="card">
+      <h2>Wallet</h2>
+      <div class="wallet-address" id="wallet-address">Loading...</div>
+      <div class="stat-grid">
+        <div class="stat">
+          <div class="stat-label">SOL Balance</div>
+          <div class="stat-value green" id="sol-balance">—</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Arb Capacity</div>
+          <div class="stat-value blue" id="tx-capacity">—</div>
+          <div class="stat-sub">transactions possible</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Controls Card -->
+    <div class="card">
+      <h2>Bot Controls</h2>
+      <div class="stat-grid">
+        <div class="stat">
+          <div class="stat-label">Jupiter Server</div>
+          <div class="stat-value" id="jupiter-status">Stopped</div>
+          <div class="controls">
+            <button class="btn btn-primary" id="jupiter-start" onclick="startJupiter()">Start</button>
+            <button class="btn btn-danger" id="jupiter-stop" onclick="stopJupiter()" disabled>Stop</button>
+          </div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Arb Bot</div>
+          <div class="stat-value" id="bot-status">Stopped</div>
+          <div class="controls">
+            <button class="btn btn-primary" id="bot-start" onclick="startBot()">Start</button>
+            <button class="btn btn-danger" id="bot-stop" onclick="stopBot()" disabled>Stop</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- How It Works Card -->
+    <div class="card card-full">
+      <h2>How Flash Loan Arbitrage Works</h2>
+      <div class="stat-grid" style="grid-template-columns: repeat(4, 1fr);">
+        <div class="stat" style="text-align:center">
+          <div class="stat-label">Step 1</div>
+          <div style="font-size:28px; margin:8px 0">🏦</div>
+          <div style="font-size:13px; color:#ccc">Flash loan borrows<br><strong>$50K+ USDC</strong><br>Zero collateral</div>
+        </div>
+        <div class="stat" style="text-align:center">
+          <div class="stat-label">Step 2</div>
+          <div style="font-size:28px; margin:8px 0">📉</div>
+          <div style="font-size:13px; color:#ccc">Buy token on<br><strong>cheaper DEX</strong><br>(Orca, Raydium...)</div>
+        </div>
+        <div class="stat" style="text-align:center">
+          <div class="stat-label">Step 3</div>
+          <div style="font-size:28px; margin:8px 0">📈</div>
+          <div style="font-size:13px; color:#ccc">Sell token on<br><strong>expensive DEX</strong><br>(Meteora, Whirlpool...)</div>
+        </div>
+        <div class="stat" style="text-align:center">
+          <div class="stat-label">Step 4</div>
+          <div style="font-size:28px; margin:8px 0">💰</div>
+          <div style="font-size:13px; color:#ccc">Repay loan<br><strong>Keep profit</strong><br>All in 1 transaction</div>
+        </div>
+      </div>
+      <div class="info-box" style="background:#1a1a2e; border-color:#2a2a4a; color:#aaa; margin-top:16px">
+        If the trade fails → entire transaction reverts → you only lose gas (~$0.001). Flash loans = zero risk of losing capital.
+      </div>
+    </div>
+
+    <!-- Bot Logs -->
+    <div class="card card-full">
+      <h2>Bot Output</h2>
+      <div class="log-box" id="bot-logs">
+        <div class="log-line" style="color:#555">Bot logs will appear here when the bot is running...</div>
+      </div>
+    </div>
+
+    <!-- Jupiter Logs -->
+    <div class="card card-full">
+      <h2>Jupiter Server Output</h2>
+      <div class="log-box" id="jupiter-logs">
+        <div class="log-line" style="color:#555">Jupiter server logs will appear here...</div>
+      </div>
+    </div>
+
+    <!-- Setup Info -->
+    <div class="card card-full">
+      <h2>Getting Started Checklist</h2>
+      <div id="checklist" style="line-height:2; font-size:14px">Loading...</div>
+    </div>
+  </div>
+
+  <script>
+    // ---- API Calls ----
+    async function api(path, method, body) {
+      const opts = { method: method || "GET", headers: { "Content-Type": "application/json" } };
+      if (body) opts.body = JSON.stringify(body);
+      const res = await fetch("/api/" + path, opts);
+      return res.json();
+    }
+
+    // ---- Setup Wizard ----
+    async function checkSetup() {
+      const s = await api("setup-status");
+      if (!s.hasConfig || !s.hasWallet) {
+        document.getElementById("setup-overlay").style.display = "flex";
+      }
+    }
+
+    async function runQuickSetup() {
+      const key = document.getElementById("helius-key").value.trim();
+      const btn = document.querySelector(".setup-btn");
+      btn.textContent = "Setting up...";
+      btn.disabled = true;
+
+      const result = await api("quick-setup", "POST", { heliusApiKey: key || null });
+
+      if (result.ok) {
+        document.getElementById("step-2").classList.remove("pending");
+        document.getElementById("step-2").classList.add("done");
+        document.getElementById("step-3").classList.remove("pending");
+        document.getElementById("step-3").classList.add("done");
+
+        btn.textContent = "Done! Loading dashboard...";
+        setTimeout(() => {
+          document.getElementById("setup-overlay").style.display = "none";
+          refreshAll();
+        }, 1000);
+      } else {
+        btn.textContent = "Error — try again";
+        btn.disabled = false;
+      }
+    }
+
+    // ---- Dashboard Updates ----
+    async function refreshWallet() {
+      const w = await api("wallet");
+      document.getElementById("wallet-address").textContent = w.address || "No wallet found";
+      document.getElementById("sol-balance").textContent = w.balance ? w.balance.toFixed(6) + " SOL" : "0 SOL";
+      document.getElementById("tx-capacity").textContent = w.txCapacity ? w.txCapacity.toLocaleString() : "0";
+    }
+
+    async function refreshStatus() {
+      const s = await api("status");
+
+      const botStatus = document.getElementById("bot-status");
+      const jupStatus = document.getElementById("jupiter-status");
+      const badge = document.getElementById("bot-badge");
+
+      if (s.bot === "running") {
+        botStatus.textContent = "Running";
+        botStatus.style.color = "#00d4aa";
+        badge.className = "status-badge status-running";
+        badge.textContent = "Bot: Running";
+        document.getElementById("bot-start").disabled = true;
+        document.getElementById("bot-stop").disabled = false;
+      } else {
+        botStatus.textContent = "Stopped";
+        botStatus.style.color = "#ff4444";
+        badge.className = "status-badge status-stopped";
+        badge.textContent = "Bot: Stopped";
+        document.getElementById("bot-start").disabled = false;
+        document.getElementById("bot-stop").disabled = true;
+      }
+
+      if (s.jupiter === "running") {
+        jupStatus.textContent = "Running";
+        jupStatus.style.color = "#00d4aa";
+        document.getElementById("jupiter-start").disabled = true;
+        document.getElementById("jupiter-stop").disabled = false;
+      } else {
+        jupStatus.textContent = "Stopped";
+        jupStatus.style.color = "#ff4444";
+        document.getElementById("jupiter-start").disabled = false;
+        document.getElementById("jupiter-stop").disabled = true;
+      }
+    }
+
+    async function refreshLogs() {
+      const botLogs = await api("logs/bot");
+      const jupLogs = await api("logs/jupiter");
+
+      renderLogs("bot-logs", botLogs);
+      renderLogs("jupiter-logs", jupLogs);
+    }
+
+    function renderLogs(id, logs) {
+      if (!logs || logs.length === 0) return;
+      const el = document.getElementById(id);
+      el.innerHTML = logs.map(l => {
+        const time = new Date(l.time).toLocaleTimeString();
+        let cls = "";
+        if (l.text.toLowerCase().includes("profit")) cls = "profit";
+        if (l.text.toLowerCase().includes("error") || l.text.toLowerCase().includes("fail")) cls = "error";
+        return `<div class="log-line"><span class="log-time">${time}</span><span class="${cls}">${escapeHtml(l.text)}</span></div>`;
+      }).join("");
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    }
+
+    async function refreshChecklist() {
+      const s = await api("setup-status");
+      const items = [
+        { done: s.hasConfig, text: 'Bot config created (bot-config.toml)' },
+        { done: s.hasJupiterConfig, text: 'Jupiter config created (jupiter-config.toml)' },
+        { done: s.hasWallet, text: 'Wallet generated' },
+        { done: s.hasNotarb, text: '<a href="https://download.notarb.org/" target="_blank">Download NotArb</a> → extract into ./notarb/' },
+      ];
+
+      document.getElementById("checklist").innerHTML = items.map(i =>
+        `<div style="color:${i.done ? '#00d4aa' : '#888'}">${i.done ? '&#10003;' : '&#9744;'} ${i.text}</div>`
+      ).join("");
+    }
+
+    // ---- Controls ----
+    async function startJupiter() { await api("jupiter/start", "POST"); refreshStatus(); }
+    async function stopJupiter() { await api("jupiter/stop", "POST"); refreshStatus(); }
+    async function startBot() { await api("bot/start", "POST"); refreshStatus(); }
+    async function stopBot() { await api("bot/stop", "POST"); refreshStatus(); }
+
+    // ---- Init ----
+    async function refreshAll() {
+      await Promise.all([refreshWallet(), refreshStatus(), refreshLogs(), refreshChecklist()]);
+    }
+
+    checkSetup();
+    refreshAll();
+    setInterval(refreshAll, 5000);
+  </script>
+</body>
+</html>
