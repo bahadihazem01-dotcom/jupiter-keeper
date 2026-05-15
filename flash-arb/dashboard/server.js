@@ -167,7 +167,26 @@ app.get("/api/setup-status", (_req, res) => {
 
 // Quick setup — create configs from examples
 app.post("/api/quick-setup", (req, res) => {
-  const { heliusApiKey } = req.body;
+  const { privateKey, heliusApiKey } = req.body;
+
+  if (!privateKey) {
+    return res.json({ ok: false, error: "Private key is required" });
+  }
+
+  // Import wallet from private key (base58)
+  const walletDir = path.join(FLASH_ARB_DIR, "wallet");
+  if (!fs.existsSync(walletDir)) fs.mkdirSync(walletDir, { recursive: true });
+
+  const kpFile = path.join(walletDir, "fee-payer.json");
+  try {
+    const bs58 = require("bs58");
+    const { Keypair } = require("@solana/web3.js");
+    const decoded = bs58.decode(privateKey);
+    const kp = Keypair.fromSecretKey(decoded);
+    fs.writeFileSync(kpFile, JSON.stringify(Array.from(kp.secretKey)), { mode: 0o600 });
+  } catch (e) {
+    return res.json({ ok: false, error: "Invalid private key: " + e.message });
+  }
 
   // Copy example configs
   for (const name of ["bot-config", "jupiter-config"]) {
@@ -180,17 +199,6 @@ app.post("/api/quick-setup", (req, res) => {
       }
       fs.writeFileSync(dest, content, "utf-8");
     }
-  }
-
-  // Generate wallet if needed
-  const walletDir = path.join(FLASH_ARB_DIR, "wallet");
-  if (!fs.existsSync(walletDir)) fs.mkdirSync(walletDir, { recursive: true });
-
-  const kpFile = path.join(walletDir, "fee-payer.json");
-  if (!fs.existsSync(kpFile)) {
-    const { Keypair } = require("@solana/web3.js");
-    const kp = Keypair.generate();
-    fs.writeFileSync(kpFile, JSON.stringify(Array.from(kp.secretKey)));
   }
 
   res.json({ ok: true, wallet: getPublicKey() });

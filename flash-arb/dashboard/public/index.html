@@ -325,15 +325,19 @@
         <div class="step pending" id="step-3"><div class="step-num">3</div><div class="step-label">Ready</div></div>
       </div>
 
-      <label for="helius-key">Helius API Key <a href="https://dashboard.helius.dev" target="_blank">(get one free →)</a></label>
-      <input id="helius-key" type="text" placeholder="Paste your Helius API key here...">
+      <label for="private-key">Your Solana Private Key (base58)</label>
+      <input id="private-key" type="password" placeholder="Paste your private key here...">
+      <div style="font-size:11px; color:#666; margin-top:4px">Your key stays on your machine. Never shared or uploaded anywhere.</div>
+
+      <label for="helius-key" style="margin-top:16px">Helius API Key <a href="https://dashboard.helius.dev" target="_blank">(get one free →)</a></label>
+      <input id="helius-key" type="text" placeholder="Paste your Helius API key here (optional)...">
 
       <div class="info-box">
         Free tier: 1M credits/month, 10 req/s.<br>
         Sign up at <a href="https://dashboard.helius.dev" target="_blank">dashboard.helius.dev</a> — takes 1 minute.
       </div>
 
-      <button class="btn btn-primary setup-btn" onclick="runQuickSetup()">Set Up & Generate Wallet</button>
+      <button class="btn btn-primary setup-btn" onclick="runQuickSetup()">Set Up Wallet</button>
     </div>
   </div>
 
@@ -449,12 +453,22 @@
     }
 
     async function runQuickSetup() {
-      const key = document.getElementById("helius-key").value.trim();
+      const privateKey = document.getElementById("private-key").value.trim();
+      const heliusKey = document.getElementById("helius-key").value.trim();
       const btn = document.querySelector(".setup-btn");
+
+      if (!privateKey) {
+        alert("Please paste your Solana private key (base58 format).");
+        return;
+      }
+
       btn.textContent = "Setting up...";
       btn.disabled = true;
 
-      const result = await api("quick-setup", "POST", { heliusApiKey: key || null });
+      const result = await api("quick-setup", "POST", {
+        privateKey: privateKey,
+        heliusApiKey: heliusKey || null
+      });
 
       if (result.ok) {
         document.getElementById("step-2").classList.remove("pending");
@@ -468,7 +482,8 @@
           refreshAll();
         }, 1000);
       } else {
-        btn.textContent = "Error — try again";
+        alert(result.error || "Setup failed — check your private key format.");
+        btn.textContent = "Set Up Wallet";
         btn.disabled = false;
       }
     }
