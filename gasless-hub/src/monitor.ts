@@ -101,6 +101,10 @@ async function main() {
     // Kora not running
   }
 
+  console.log(`  Network: ${cfg.network.toUpperCase()}${cfg.network === "devnet" ? " (FREE)" : ""}`);
+  console.log(`  RPC: ${cfg.heliusApiKey ? "Helius" : "Public Solana"} ${cfg.network}`);
+  console.log("");
+
   const stats = await getMonitorStats(cfg.connection, feePayerAddress, cfg.feeMargin);
   console.log(formatStats(stats));
 

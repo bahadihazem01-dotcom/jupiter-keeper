@@ -114,6 +114,9 @@ async function main() {
   const cfg = loadConfig();
   const client = new GaslessClient(cfg.koraEndpoint, cfg.connection.rpcEndpoint);
 
+  console.log(`  Network: ${cfg.network.toUpperCase()}${cfg.network === "devnet" ? " (FREE)" : ""}`);
+  console.log(`  RPC: ${cfg.heliusApiKey ? "Helius" : "Public Solana"} ${cfg.network}`);
+
   await checkPrerequisites(client, cfg.connection, cfg.feePayer.publicKey.toBase58());
 
   console.log("Relayer is running. Transactions will be relayed through the Kora Paymaster.");

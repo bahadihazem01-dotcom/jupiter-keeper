@@ -4,7 +4,13 @@ import bs58 from "bs58";
 
 config();
 
+export type NetworkMode = "devnet" | "mainnet";
+
+const DEVNET_USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
+const MAINNET_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+
 export interface GaslessHubConfig {
+  network: NetworkMode;
   connection: Connection;
   feePayer: Keypair;
   feeMargin: number;
@@ -14,6 +20,8 @@ export interface GaslessHubConfig {
   monitorPort: number;
   selfHostedKora: boolean;
   koraPort: number;
+  heliusApiKey: string | null;
+  rpcUrl: string;
 }
 
 function requireEnv(name: string): string {
@@ -28,8 +36,34 @@ function optionalEnv(name: string, fallback: string): string {
   return process.env[name] || fallback;
 }
 
+function resolveRpcUrl(network: NetworkMode, heliusApiKey: string | null): string {
+  const explicitRpc = process.env["SOLANA_RPC_URL"];
+  if (explicitRpc) return explicitRpc;
+
+  if (heliusApiKey) {
+    if (network === "devnet") {
+      return `https://devnet.helius-rpc.com/?api-key=${heliusApiKey}`;
+    }
+    return `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`;
+  }
+
+  if (network === "devnet") {
+    return "https://api.devnet.solana.com";
+  }
+  return "https://api.mainnet-beta.solana.com";
+}
+
+function resolveUsdcMint(network: NetworkMode): string {
+  const explicit = process.env["FEE_TOKEN_MINT"];
+  if (explicit) return explicit;
+  return network === "devnet" ? DEVNET_USDC_MINT : MAINNET_USDC_MINT;
+}
+
 export function loadConfig(): GaslessHubConfig {
-  const rpcUrl = optionalEnv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com");
+  const network = (optionalEnv("SOLANA_NETWORK", "devnet") as NetworkMode);
+  const heliusApiKey = process.env["HELIUS_API_KEY"] || null;
+
+  const rpcUrl = resolveRpcUrl(network, heliusApiKey);
   const connection = new Connection(rpcUrl, "confirmed");
 
   const feePayerKey = requireEnv("FEE_PAYER_PRIVATE_KEY");
@@ -46,11 +80,8 @@ export function loadConfig(): GaslessHubConfig {
   }
 
   const feeMargin = parseFloat(optionalEnv("FEE_MARGIN", "0.1"));
-  const feeTokenMintStr = optionalEnv(
-    "FEE_TOKEN_MINT",
-    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
-  );
-  const feeTokenMint = feeTokenMintStr ? new PublicKey(feeTokenMintStr) : null;
+  const usdcMint = resolveUsdcMint(network);
+  const feeTokenMint = usdcMint ? new PublicKey(usdcMint) : null;
   const koraEndpoint = optionalEnv("KORA_ENDPOINT", "http://localhost:8080");
   const jitoBlockEngineUrl = optionalEnv(
     "JITO_BLOCK_ENGINE_URL",
@@ -61,6 +92,7 @@ export function loadConfig(): GaslessHubConfig {
   const koraPort = parseInt(optionalEnv("KORA_PORT", "8080"), 10);
 
   return {
+    network,
     connection,
     feePayer,
     feeMargin,
@@ -70,5 +102,7 @@ export function loadConfig(): GaslessHubConfig {
     monitorPort,
     selfHostedKora,
     koraPort,
+    heliusApiKey,
+    rpcUrl,
   };
 }
