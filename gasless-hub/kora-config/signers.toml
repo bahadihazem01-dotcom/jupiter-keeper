@@ -1,0 +1,34 @@
+# Kora Signer Configuration
+#
+# Configure how Kora signs transactions as the fee payer.
+# For a simple setup, use a memory signer with a local keypair.
+#
+# IMPORTANT: In production, use a more secure signer like Turnkey or Vault.
+# The memory signer stores the private key on disk — only use for testing
+# or if you secure the server properly.
+
+[[signers]]
+type = "Memory"
+# Path to your fee payer keypair JSON file
+# Generate one with: solana-keygen new -o fee-payer.json
+keypair_path = "/app/fee-payer.json"
+
+# Alternative: Use environment variable for the private key
+# [[signers]]
+# type = "Memory"
+# keypair_base58 = "${FEE_PAYER_PRIVATE_KEY}"
+
+# For production, consider Turnkey or Privy:
+#
+# [[signers]]
+# type = "Turnkey"
+# api_public_key = "your-turnkey-api-public-key"
+# api_private_key = "your-turnkey-api-private-key"
+# organization_id = "your-org-id"
+# wallet_id = "your-wallet-id"
+#
+# [[signers]]
+# type = "Privy"
+# app_id = "your-privy-app-id"
+# app_secret = "your-privy-app-secret"
+# wallet_id = "your-privy-wallet-id"

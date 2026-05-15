@@ -1,0 +1,121 @@
+# ============================================================
+# NotArb Flash Loan Arbitrage — Bot Configuration
+# ============================================================
+#
+# This config is optimized for flash loan arbitrage with minimal capital.
+# Flash loans = borrow millions with ZERO collateral, repay in same tx.
+# You only pay gas (~$0.001 per attempt) + 12.5% of PROFITS.
+#
+# Full config docs: https://github.com/NotArb/Jupiter/blob/main/BOTCONFIG.md
+# Example configs: https://examples.notarb.org/
+
+# ---- Required Settings ----
+
+[bot_misc]
+# Path to your Solana wallet keypair file
+keypair_path="./wallet/fee-payer.json"
+
+# MUST be true to run NotArb
+acknowledge_terms_of_service=true
+acknowledge_external_price_risk=true
+
+# Threading (0 = auto-detect optimal)
+swap_threads=0
+jito_threads=0
+spam_threads=0
+
+# ---- Jupiter API (self-hosted) ----
+# NotArb runs its own Jupiter server for route finding
+# Start it with: bash start-jupiter.sh
+
+[jupiter]
+url="http://127.0.0.1:8080/"
+http_timeout_ms=3000
+http_pool_max_size=50
+http_pool_keep_alive="5m"
+
+# ---- RPC Configuration ----
+# Get a FREE Helius API key at: https://dashboard.helius.dev
+# Replace YOUR_HELIUS_API_KEY below with your actual key
+#
+# Helius free tier: 1M credits/month, 10 req/s
+# For better results, upgrade to paid Helius ($24.50/mo = 10M credits)
+
+[[rpc]]
+enabled=true
+id="helius"
+url="https://mainnet.helius-rpc.com/?api-key=YOUR_HELIUS_API_KEY"
+http_timeout_ms=1000
+http_pool_max_size=10
+http_pool_keep_alive="5m"
+
+# ---- Jito MEV Bundles ----
+# Jito gives your arb transactions priority inclusion
+# This is how you beat other arb bots to the trade
+
+[[jito]]
+enabled=true
+url="https://mainnet.block-engine.jito.wtf"
+http_timeout_ms=3000
+http_pool_max_size=5
+requests_per_second=5
+queue_timeout_ms=7500
+
+# ---- Token Account Fetcher ----
+# Speeds up transaction building by knowing which accounts are open
+
+[token_accounts_fetcher]
+enabled=true
+rpc="helius"
+
+# ---- Simulation Mode ----
+# Start with this ENABLED to test without spending any SOL!
+# Once you see profitable opportunities, switch to false.
+
+[simulation_mode]
+enabled=true
+rpc="helius"
+skip_known_jupiter_errors=true
+skip_successful_responses=false
+skip_no_profit_responses=true
+force_blockhash=true
+
+# ---- WSOL Unwrapper ----
+# Automatically unwraps WSOL to SOL when balance gets low
+
+[wsol_unwrapper]
+enabled=true
+rpc="helius"
+check_minutes=5
+min_sol=0.05
+unwrap_sol=0.1
+priority_fee_lamports=1000
+
+# ---- Token Mints to Arbitrage ----
+# Start with high-volume tokens for more opportunities
+# Add more as you learn the system
+
+[[mints]]
+mint="EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"  # USDC
+tag="USDC"
+amount=1000000000  # $1000 USDC (6 decimals) — flash loaned, not from your wallet!
+
+[[mints]]
+mint="Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"  # USDT
+tag="USDT"
+amount=1000000000
+
+[[mints]]
+mint="So11111111111111111111111111111111111111112"  # SOL (wrapped)
+tag="SOL"
+amount=5000000000  # 5 SOL worth — flash loaned
+
+[[mints]]
+mint="JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN"  # JUP
+tag="JUP"
+amount=10000000000
+
+[[mints]]
+mint="DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"  # BONK
+tag="BONK"
+amount=100000000000000  # lots of BONK (5 decimals)
