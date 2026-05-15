@@ -1,0 +1,28 @@
+{
+  "name": "solana-gasless-hub",
+  "version": "1.0.0",
+  "description": "Plug-and-play Solana gasless transaction relayer. Run infrastructure, earn fee margins via Kora Paymaster + Jito bundles.",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "tsx src/relayer.ts",
+    "monitor": "tsx src/monitor.ts",
+    "example:transfer": "tsx examples/gasless-transfer.ts",
+    "example:swap": "tsx examples/gasless-swap.ts",
+    "lint": "tsc --noEmit",
+    "setup": "tsx src/setup.ts"
+  },
+  "keywords": ["solana", "gasless", "paymaster", "kora", "relayer", "jito", "mev"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@solana/spl-token": "^0.4.14",
+    "@solana/web3.js": "^1.98.4",
+    "@types/node": "^25.8.0",
+    "bs58": "^6.0.0",
+    "dotenv": "^17.4.2",
+    "tsx": "^4.22.0",
+    "typescript": "^6.0.3"
+  }
+}

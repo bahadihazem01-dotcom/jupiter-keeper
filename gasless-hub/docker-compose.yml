@@ -1,0 +1,45 @@
+# Solana Gasless Hub — Docker Compose
+#
+# This spins up a Kora Paymaster node that YOU operate.
+# It pays SOL gas fees for users, and you earn the fee margin.
+#
+# Usage:
+#   1. Copy .env.example to .env and fill in your fee payer key
+#   2. Run: docker compose up -d
+#   3. Your Paymaster is now live at http://localhost:8080
+
+services:
+  kora:
+    image: ghcr.io/solana-foundation/kora:latest
+    container_name: gasless-hub-kora
+    ports:
+      - "${KORA_PORT:-8080}:8080"
+    volumes:
+      - ./kora-config/kora.toml:/app/kora.toml:ro
+      - ./kora-config/signers.toml:/app/signers.toml:ro
+    environment:
+      - RUST_LOG=info
+      - SOLANA_RPC_URL=${SOLANA_RPC_URL:-https://api.mainnet-beta.solana.com}
+    command: >
+      kora
+      --config /app/kora.toml
+      --rpc-url ${SOLANA_RPC_URL:-https://api.mainnet-beta.solana.com}
+      rpc start
+      --signers-config /app/signers.toml
+      --port 8080
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Optional: Redis for usage tracking and rate limiting
+  redis:
+    image: redis:7-alpine
+    container_name: gasless-hub-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    profiles:
+      - with-redis
